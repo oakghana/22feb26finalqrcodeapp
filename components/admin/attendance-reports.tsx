@@ -1384,7 +1384,7 @@ export function AttendanceReports() {
 
                                 <div className="flex flex-col gap-2 ml-2">
                                   <Badge variant="secondary">
-                                    {record.user_profiles.departments?.name}
+                                    {record.user_profiles?.departments?.name || "N/A"}
                                   </Badge>
                                   <Badge variant="outline" className="text-xs max-w-xs truncate block" title={getLocationLabel(record, 'in')}>
                                     {getLocationLabel(record, 'in')}
@@ -1445,7 +1445,7 @@ export function AttendanceReports() {
 
                                 <div className="flex flex-col gap-2 ml-2">
                                   <Badge variant="secondary">
-                                    {record.user_profiles.departments?.name}
+                                    {record.user_profiles?.departments?.name || "N/A"}
                                   </Badge>
                                   <Badge variant="outline" className="text-xs max-w-xs truncate block" title={getLocationLabel(record, 'out')}>
                                     {getLocationLabel(record, 'out')}
