@@ -1691,12 +1691,6 @@ export function AttendanceRecorder({
 
     const prover = earlyCheckoutProvedBy.trim()
 
-    // Require prover when reason is required
-    if (earlyCheckoutReasonRequired && !prover) {
-      setFlashMessage({ message: "Please provide the name of the person who provided/verified this reason.", type: "error" })
-      return
-    }
-
     setShowEarlyCheckoutDialog(false)
     setIsLoading(true)
 
@@ -1742,11 +1736,6 @@ export function AttendanceRecorder({
     }
 
     const latenessProver = latenessProvedBy.trim()
-
-    if (!latenessProver) {
-      setFlashMessage({ message: "Please provide the name of the person who provided/verified this reason.", type: "error" })
-      return
-    }
 
     setShowLatenessDialog(false)
     setIsCheckingIn(true)
@@ -2326,7 +2315,7 @@ export function AttendanceRecorder({
                   {earlyCheckoutReason.length}/500 characters {earlyCheckoutReasonRequired ? '(minimum 10 required)' : '(optional)'}
                 </p>
                 <div className="mt-2">
-                  <Label htmlFor="early-proved-by">Provided/Verified By {earlyCheckoutReasonRequired ? '*' : '(recommended)'}</Label>
+                  <Label htmlFor="early-proved-by">Provided/Verified By <span className="text-gray-400 text-xs">(optional)</span></Label>
                   <input
                     id="early-proved-by"
                     value={earlyCheckoutProvedBy}
@@ -2402,7 +2391,7 @@ export function AttendanceRecorder({
                   {latenessReason.length}/500 characters (minimum 10 required)
                 </p>
                 <div className="mt-2">
-                  <Label htmlFor="lateness-proved-by">Provided/Verified By *</Label>
+                  <Label htmlFor="lateness-proved-by">Provided/Verified By <span className="text-gray-400 text-xs">(optional)</span></Label>
                   <input
                     id="lateness-proved-by"
                     value={latenessProvedBy}
