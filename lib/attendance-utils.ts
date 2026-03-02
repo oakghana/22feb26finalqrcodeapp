@@ -58,30 +58,30 @@ export function isExemptFromAttendanceReasons(role?: string | null): boolean {
  */
 export function requiresLatenessReason(date: Date = new Date(), dept?: DeptInfo, role?: string | null): boolean {
   if (isWeekend(date)) return false
-  // All non-restricted departments are exempt
-  if (isExemptFromTimeRestrictions(dept, role)) return false
-  if (isResearchDept(dept)) return false
-  // Admin role is also exempt
+  // Only Security and Transport departments are exempt
+  if (isSecurityDept(dept)) return false
+  if (isTransportDept(dept)) return false
+  // Admin, department heads and regional managers are exempt
   const lowerRole = (role || "").toLowerCase()
-  if (lowerRole === "admin") return false
+  if (lowerRole === "admin" || lowerRole === "department_head" || lowerRole === "regional_manager") return false
   return true
 }
 
 /**
  * Returns true when an early-checkout reason should be enforced.
  * - Enforced only when location-level flag is true and it's not a weekend
- * - All non-restricted departments (Security, Operational, Transport) are exempt
+ * - Only Security and Transport departments are exempt
  * - Admin, Department heads and regional managers are exempt
  */
 export function requiresEarlyCheckoutReason(date: Date = new Date(), locationRequires: boolean = true, role?: string | null, dept?: DeptInfo): boolean {
   if (!locationRequires) return false
   if (isWeekend(date)) return false
-  // All non-restricted departments are exempt
-  if (isExemptFromTimeRestrictions(dept, role)) return false
-  if (isResearchDept(dept)) return false
-  // Admin role is also exempt
+  // Only Security and Transport departments are exempt
+  if (isSecurityDept(dept)) return false
+  if (isTransportDept(dept)) return false
+  // Admin, department heads and regional managers are exempt
   const lowerRole = (role || "").toLowerCase()
-  if (lowerRole === "admin") return false
+  if (lowerRole === "admin" || lowerRole === "department_head" || lowerRole === "regional_manager") return false
   return true
 }
 
