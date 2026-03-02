@@ -412,15 +412,15 @@ export function HRExcuseDutyClient() {
                       <TableCell>
                         <div>
                           <div className="font-medium">
-                            {doc.user_profiles.first_name} {doc.user_profiles.last_name}
+                            {doc.user_profiles?.first_name || "Unknown"} {doc.user_profiles?.last_name || ""}
                           </div>
-                          <div className="text-sm text-muted-foreground">{doc.user_profiles.employee_id}</div>
+                          <div className="text-sm text-muted-foreground">{doc.user_profiles?.employee_id || "N/A"}</div>
                         </div>
                       </TableCell>
                       <TableCell>
                         <div>
-                          <div className="font-medium">{doc.user_profiles.departments.name}</div>
-                          <div className="text-sm text-muted-foreground">{doc.user_profiles.departments.code}</div>
+                          <div className="font-medium">{doc.user_profiles?.departments?.name || "N/A"}</div>
+                          <div className="text-sm text-muted-foreground">{doc.user_profiles?.departments?.code || ""}</div>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -508,12 +508,12 @@ export function HRExcuseDutyClient() {
                 <div>
                   <label className="text-sm font-medium">Staff Member</label>
                   <p className="text-sm text-muted-foreground">
-                    {selectedDoc.user_profiles.first_name} {selectedDoc.user_profiles.last_name}
+                    {selectedDoc.user_profiles?.first_name || "Unknown"} {selectedDoc.user_profiles?.last_name || ""}
                   </p>
                 </div>
                 <div>
                   <label className="text-sm font-medium">Department</label>
-                  <p className="text-sm text-muted-foreground">{selectedDoc.user_profiles.departments.name}</p>
+                  <p className="text-sm text-muted-foreground">{selectedDoc.user_profiles?.departments?.name || "N/A"}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium">Date of Absence</label>
