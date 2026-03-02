@@ -374,7 +374,7 @@ export function AttendanceReports() {
                 new Date(record.check_in_time).toLocaleDateString(),
                 `"${record.user_profiles?.employee_id || "N/A"}"`,
                 `"${(record.user_profiles?.first_name || "") + (record.user_profiles?.last_name ? ' ' + record.user_profiles.last_name : '') || 'Unknown User'}"`,
-                `"${record.user_profiles.departments?.name || "N/A"}"`,
+                `"${record.user_profiles?.departments?.name || "N/A"}"`,
                 `"${record.user_profiles.assigned_location?.name || "N/A"}"`,
                 `"${new Date(record.check_in_time).toLocaleTimeString()}"`,
                 `"${checkInLabel}"`,
@@ -1227,7 +1227,7 @@ export function AttendanceReports() {
                               </div>
                             </div>
                           </TableCell>
-                          <TableCell className={compactMode ? "py-1" : "py-2"}><Badge variant="outline" className={compactMode ? "font-medium text-gray-700 dark:text-slate-200 text-xs" : "font-medium text-gray-700 dark:text-slate-200 text-sm"}>{record.user_profiles.departments?.name || 'N/A'}</Badge></TableCell>
+                          <TableCell className={compactMode ? "py-1" : "py-2"}><Badge variant="outline" className={compactMode ? "font-medium text-gray-700 dark:text-slate-200 text-xs" : "font-medium text-gray-700 dark:text-slate-200 text-sm"}>{record.user_profiles?.departments?.name || 'N/A'}</Badge></TableCell>
                           <TableCell className={compactMode ? "py-1 text-gray-800 dark:text-slate-200 text-xs" : "py-2 text-gray-800 dark:text-slate-200 text-sm"}>{new Date(record.check_in_time).toLocaleTimeString()}</TableCell>
                           <TableCell className="py-2 text-gray-800 dark:text-slate-200 text-sm"><div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-gray-500 dark:text-slate-400" /><span className="text-sm text-gray-700 dark:text-slate-300 max-w-xs truncate block" title={getLocationLabel(record, 'in')}>{getLocationLabel(record, 'in')}</span></div></TableCell>
                           <TableCell className={compactMode ? "hidden sm:table-cell py-1 text-gray-800 dark:text-slate-200 text-xs" : "hidden sm:table-cell py-2 text-gray-800 dark:text-slate-200 text-sm"}>{record.check_out_time ? new Date(record.check_out_time).toLocaleTimeString() : <span className="text-gray-400 dark:text-slate-400">-</span>}</TableCell>

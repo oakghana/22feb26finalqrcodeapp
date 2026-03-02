@@ -242,7 +242,8 @@ export async function POST(request: NextRequest) {
       const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
       if (!supabaseUrl || !serviceRoleKey) {
-        throw new Error("Missing Supabase admin credentials")
+        console.error("[v0] Staff API POST - Missing Supabase credentials. SUPABASE_URL:", !!supabaseUrl, "SERVICE_ROLE_KEY:", !!serviceRoleKey)
+        throw new Error("Server misconfiguration: SUPABASE_SERVICE_ROLE_KEY is not set. Please add it to your environment variables.")
       }
 
       adminSupabase = createClient(supabaseUrl, serviceRoleKey, {
@@ -255,10 +256,11 @@ export async function POST(request: NextRequest) {
       console.log("[v0] Staff API - Admin client created successfully")
     } catch (clientError) {
       console.error("[v0] Staff API POST - Client creation error:", clientError)
+      const errMsg = clientError instanceof Error ? clientError.message : "Database connection error"
       return createJsonResponse(
         {
           success: false,
-          error: "Database connection error",
+          error: errMsg,
         },
         500,
       )
@@ -338,11 +340,22 @@ export async function POST(request: NextRequest) {
     })
 
     if (authCreateError) {
-      console.error("[v0] Staff API - Auth user creation error:", authCreateError.message)
+      console.error("[v0] Staff API - Auth user creation error:", authCreateError.message, "| status:", authCreateError.status)
+      // Surface actionable messages for common auth errors
+      let userFacingError = "Failed to create user account"
+      if (authCreateError.message?.toLowerCase().includes("email") && authCreateError.message?.toLowerCase().includes("already")) {
+        userFacingError = "An account with this email already exists in the authentication system"
+      } else if (authCreateError.message?.toLowerCase().includes("invalid") && authCreateError.message?.toLowerCase().includes("email")) {
+        userFacingError = "The email address provided is invalid"
+      } else if (authCreateError.message?.toLowerCase().includes("password")) {
+        userFacingError = "Password does not meet requirements (min 6 characters)"
+      } else if (authCreateError.message) {
+        userFacingError = authCreateError.message
+      }
       return createJsonResponse(
         {
           success: false,
-          error: "Failed to create user account",
+          error: userFacingError,
           details: authCreateError.message,
         },
         400,
