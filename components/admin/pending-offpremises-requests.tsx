@@ -26,13 +26,13 @@ interface PendingRequest {
   approved_at?: string
   rejection_reason?: string
   google_maps_name?: string
-  user_profiles: {
-    id: string
-    first_name: string
-    last_name: string
-    email: string
+  user_profiles?: {
+    id?: string
+    first_name?: string
+    last_name?: string
+    email?: string
     employee_id?: string
-    department_id: string
+    department_id?: string
     position?: string
     assigned_location_id?: string
   }
@@ -202,8 +202,8 @@ export function PendingOffPremisesRequests() {
 
       toast({
         title: approved ? 'Approved' : 'Rejected',
-        description: approved
-          ? `${request.user_profiles.first_name} ${request.user_profiles.last_name} checked in (off-premises).`
+          description: approved
+            ? `${request.user_profiles?.first_name || 'Unknown'} ${request.user_profiles?.last_name || ''} checked in (off-premises).`
           : `Off-premises request rejected.`,
         action: attendanceId ? (
           <Button
@@ -402,13 +402,13 @@ CREATE INDEX IF NOT EXISTS idx_pending_offpremises_created_at ON public.pending_
                           {request.user_profiles?.employee_id && (
                             <div className="flex items-center gap-2">
                               <User className="h-4 w-4" />
-                              <span>ID: {request.user_profiles.employee_id}</span>
+                              <span>ID: {request.user_profiles?.employee_id}</span>
                             </div>
                           )}
                           {request.user_profiles?.position && (
                             <div className="flex items-center gap-2">
                               <User className="h-4 w-4" />
-                              <span>Position: {request.user_profiles.position}</span>
+                              <span>Position: {request.user_profiles?.position}</span>
                             </div>
                           )}
                           <div className="flex items-center gap-2">
@@ -511,7 +511,7 @@ CREATE INDEX IF NOT EXISTS idx_pending_offpremises_created_at ON public.pending_
         <div className="fixed bottom-0 left-0 right-0 bg-background border-t p-3 safe-area-inset-x">
           <div className="max-w-4xl mx-auto flex items-center gap-3">
             <div className="flex-1">
-              <div className="text-sm font-medium">{quickSelectedRequest.user_profiles.first_name} {quickSelectedRequest.user_profiles.last_name}</div>
+              <div className="text-sm font-medium">{quickSelectedRequest.user_profiles?.first_name || 'Unknown'} {quickSelectedRequest.user_profiles?.last_name || ''}</div>
               <div className="text-xs text-muted-foreground">{quickSelectedRequest.google_maps_name || quickSelectedRequest.current_location_name}</div>
             </div>
             <div className="flex gap-2">

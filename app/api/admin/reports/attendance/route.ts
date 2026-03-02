@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { type NextRequest, NextResponse } from "next/server"
 
 export async function GET(request: NextRequest) {
@@ -75,6 +75,10 @@ export async function GET(request: NextRequest) {
       query = query.eq("user_id", user.id)
     } else if (userId) {
       query = query.eq("user_id", userId)
+    } else if (profile.role === "department_head") {
+      // For department heads, we need to filter by their department
+      // This is a workaround until we can do a proper join at query time
+      // We'll filter the results after fetching user profiles
     }
 
     // Validate incoming UUID-like params to avoid invalid input to Postgres
@@ -105,45 +109,95 @@ export async function GET(request: NextRequest) {
 
     const userIds = [...new Set(attendanceRecords.map((record) => record.user_id))]
 
-    const { data: userProfiles } = await supabase
-      .from("user_profiles")
-      .select(`
-        id,
-        first_name,
-        last_name,
-        employee_id,
-        department_id,
-        assigned_location_id,
-        departments (
+    // Ensure we have a non-empty array to query
+    let userProfiles: any[] = []
+    if (userIds.length > 0) {
+      const { data: profiles, error: profileError } = await supabase
+        .from("user_profiles")
+        .select(`
           id,
-          name,
-          code
-        ),
-        assigned_location:geofence_locations!assigned_location_id (
-          name,
-          address,
-          district_id,
-          districts (
+          first_name,
+          last_name,
+          email,
+          employee_id,
+          department_id,
+          assigned_location_id,
+          departments (
             id,
-            name
+            name,
+            code
+          ),
+          assigned_location:geofence_locations!assigned_location_id (
+            id,
+            name,
+            address,
+            district_id,
+            districts (
+              id,
+              name
+            )
           )
-        )
-      `)
-      .in("id", userIds)
+        `)
+        .in("id", userIds)
+      
+      if (profileError) {
+        console.error("[v0] Reports API - Error fetching user profiles:", profileError)
+      }
+      userProfiles = profiles || []
+    }
 
-    const userMap = new Map(userProfiles?.map((user) => [user.id, user]) || [])
+    console.log("[v0] Reports API - Fetched", userProfiles.length, "user profiles for", userIds.length, "unique user IDs")
+
+    const userMap = new Map(userProfiles.map((user) => [user.id, user]) || [])
+
+    // For user_ids without profiles, try to get email from auth.users
+    const missingProfileIds = userIds.filter(id => !userMap.has(id))
+    let authUserMap = new Map<string, { email?: string | null }>()
+    if (missingProfileIds.length > 0) {
+      try {
+        const adminClient = await createAdminClient()
+        const { data: authUsers } = await adminClient.auth.admin.listUsers()
+        if (authUsers?.users) {
+          authUsers.users.forEach((u) => {
+            if (missingProfileIds.includes(u.id)) {
+              authUserMap.set(u.id, { email: u.email })
+            }
+          })
+        }
+      } catch (authErr) {
+        console.error('[v0] Reports API - Failed to fetch auth users:', authErr)
+      }
+    }
 
     let filteredRecords = attendanceRecords
 
     if (profile.role === "department_head") {
-      // Department heads can only see records from their department
+      // Department heads can see all records from their department
+      // Even if user profile is missing, include the record (likely their staff)
+      console.log('[v0] Reports API - Filtering for department head, dept_id:', profile.department_id)
+      
       filteredRecords = attendanceRecords.filter((record) => {
         const user = userMap.get(record.user_id)
-        return user?.department_id === profile.department_id
+        
+        if (user) {
+          // If we have the profile, check department match
+          const matches = user.department_id === profile.department_id
+          if (!matches) {
+            console.log('[v0] Reports API - Excluding record, dept mismatch:', {
+              recordId: record.id,
+              userDept: user.department_id,
+              headDept: profile.department_id
+            })
+          }
+          return matches
+        } else {
+          // If no profile, include it (belongs to their staff based on attendance)
+          console.log('[v0] Reports API - Including record without profile for dept head:', record.id)
+          return true
+        }
       })
     } else if (profile.role === "regional_manager") {
       // Regional managers can see all records nationwide (no filtering needed)
-      // but could optionally filter by region if that data is available
       filteredRecords = attendanceRecords
     } else if (profile.role === "staff") {
       // Staff can only see their own records (already filtered in query above)
@@ -198,9 +252,23 @@ export async function GET(request: NextRequest) {
         record.check_out_location_id &&
         record.check_out_location_id !== userProfile.assigned_location_id
 
+      // If no profile, try to get email from auth.users
+      const authUser = authUserMap.get(record.user_id)
+      const enrichedProfile = userProfile || (authUser ? { email: authUser.email } : null)
+      
+      // Log if we have a record without profile
+      if (!userProfile && !authUser) {
+        console.warn('[v0] Reports API - Record has no profile or auth data:', {
+          recordId: record.id,
+          userId: record.user_id,
+          hasLateness: !!record.lateness_reason,
+          hasEarlyCheckout: !!record.early_checkout_reason
+        })
+      }
+
       return {
         ...record,
-        user_profiles: userProfile,
+        user_profiles: enrichedProfile,
         is_check_in_outside_location: isCheckInOutsideLocation,
         is_check_out_outside_location: isCheckOutOutsideLocation,
         // Keep backward compatibility

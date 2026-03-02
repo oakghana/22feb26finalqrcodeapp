@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { latitude, longitude, location_id, qr_code_used, qr_timestamp, early_checkout_reason, override_request, override_reason } = body
+    const { latitude, longitude, location_id, qr_code_used, qr_timestamp, early_checkout_reason, early_checkout_proved_by, early_checkout_proved_by_id, override_request, override_reason } = body
 
     if (!qr_code_used && (!latitude || !longitude)) {
       return NextResponse.json({ error: "Location coordinates are required for GPS check-out" }, { status: 400 })
@@ -572,6 +572,8 @@ export async function POST(request: NextRequest) {
 
     if (early_checkout_reason) {
       checkoutData.early_checkout_reason = early_checkout_reason
+      if (early_checkout_proved_by) checkoutData.early_checkout_proved_by = String(early_checkout_proved_by).trim()
+      if (early_checkout_proved_by_id) checkoutData.early_checkout_proved_by_id = early_checkout_proved_by_id
     }
 
     console.log(`[v0] Checkout - updating attendance id=${attendanceRecord.id}`, { checkoutData })

@@ -274,8 +274,10 @@ export function StaffManagement() {
           showError(`Failed to create Audit Staff: ${guidance}`, "DB Constraint")
           setError(`DB Constraint: ${guidance}`)
         } else {
-          showError(result.error || "Failed to add staff member", "Add Staff Failed")
-          setError(result.error)
+          const detailText = result.details ? (typeof result.details === 'string' ? result.details : JSON.stringify(result.details)) : null
+          const msg = result.error ? (detailText ? `${result.error}: ${detailText}` : result.error) : (detailText || "Failed to add staff member")
+          showError(msg, "Add Staff Failed")
+          setError(msg)
         }
       }
     } catch (error) {

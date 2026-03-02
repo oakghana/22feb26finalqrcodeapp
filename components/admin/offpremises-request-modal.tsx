@@ -21,12 +21,12 @@ interface PendingRequest {
   created_at: string
   status: string
   google_maps_name?: string
-  user_profiles: {
-    id: string
-    first_name: string
-    last_name: string
-    email: string
-    department_id: string
+  user_profiles?: {
+    id?: string
+    first_name?: string
+    last_name?: string
+    email?: string
+    department_id?: string
     employee_id?: string
     position?: string
     assigned_location_id?: string
@@ -84,7 +84,7 @@ export function OffPremisesRequestModal({
       toast({
         title: approved ? 'Off‑Premises Request Approved' : 'Off‑Premises Request Rejected',
         description: approved
-          ? `${request.user_profiles.first_name} has been checked in and marked as on official duty outside premises.`
+          ? `${request.user_profiles?.first_name || 'Unknown User'} has been checked in and marked as on official duty outside premises.`
           : `The off‑premises check‑in request has been rejected.`,
         action: (
           <Button asChild variant="outline">
@@ -155,21 +155,21 @@ export function OffPremisesRequestModal({
                 <User className="h-4 w-4 text-gray-500" />
                 <div>
                   <p className="font-medium">
-                    {request.user_profiles.first_name} {request.user_profiles.last_name}
+                    {request.user_profiles?.first_name || 'Unknown'} {request.user_profiles?.last_name || ''}
                   </p>
-                  <p className="text-gray-600 dark:text-gray-400">{request.user_profiles.email}</p>
+                  <p className="text-gray-600 dark:text-gray-400">{request.user_profiles?.email || 'No email'}</p>
                 </div>
               </div>
-              {request.user_profiles.employee_id && (
+              {request.user_profiles?.employee_id && (
                 <div className="flex items-center gap-2">
                   <User className="h-4 w-4 text-gray-500" />
-                  <span>Employee ID: {request.user_profiles.employee_id}</span>
+                  <span>Employee ID: {request.user_profiles?.employee_id}</span>
                 </div>
               )}
-              {request.user_profiles.position && (
+              {request.user_profiles?.position && (
                 <div className="flex items-center gap-2">
                   <User className="h-4 w-4 text-gray-500" />
-                  <span>Position: {request.user_profiles.position}</span>
+                  <span>Position: {request.user_profiles?.position}</span>
                 </div>
               )}
               <div className="flex items-center gap-2">

@@ -533,7 +533,7 @@ export function OffPremisesReviewLog() {
                                 {record.user_profiles?.first_name} {record.user_profiles?.last_name}
                               </p>
                               {record.user_profiles?.phone && (
-                                <p className="text-xs text-gray-500">{record.user_profiles.phone}</p>
+                                <p className="text-xs text-gray-500">{record.user_profiles?.phone}</p>
                               )}
                             </div>
                           </div>

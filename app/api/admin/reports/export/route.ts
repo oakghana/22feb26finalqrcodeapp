@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       // Check admin role
       const { data: profile } = await supabase.from("user_profiles").select("role").eq("id", user.id).single()
 
-      if (!profile || !["admin", "department_head"].includes(profile.role)) {
+      if (!profile || !["admin", "regional_manager", "department_head"].includes(profile.role)) {
         return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
       }
 
@@ -33,10 +33,10 @@ export async function POST(request: NextRequest) {
       let attendanceQuery = supabase.from("attendance_records").select("*")
 
       if (startDate) {
-        attendanceQuery = attendanceQuery.gte("check_in_time", startDate)
+        attendanceQuery = attendanceQuery.gte("check_in_time", `${startDate}T00:00:00`)
       }
       if (endDate) {
-        attendanceQuery = attendanceQuery.lte("check_in_time", endDate)
+        attendanceQuery = attendanceQuery.lte("check_in_time", `${endDate}T23:59:59`)
       }
       if (locationId) {
         attendanceQuery = attendanceQuery.eq("check_in_location_id", locationId)

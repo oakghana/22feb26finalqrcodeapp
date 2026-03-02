@@ -798,8 +798,11 @@ export function validateCheckoutLocation(
   // Honor a public env toggle for testing to allow poor-accuracy checkout
   const allowPoorAccuracy = typeof process !== 'undefined' && (process.env?.NEXT_PUBLIC_ALLOW_POOR_ACCURACY_CHECKOUT === 'true')
 
-  // If accuracy is extremely poor (e.g., > 5000m), treat as untrusted and require QR code instead
-  if (!allowPoorAccuracy && userLocation.accuracy > 5000) {
+  // Only hard-block when accuracy is so extreme that even the full accuracy
+  // buffer cannot bring the user within range.  For moderate poor-accuracy
+  // readings (5 000–15 000 m) the effectiveProximity buffer already compensates.
+  const canPassWithBuffer = nearest.distance <= effectiveProximity
+  if (!allowPoorAccuracy && userLocation.accuracy > 15000 && !canPassWithBuffer) {
     return {
       canCheckOut: false,
       nearestLocation: nearest.location,

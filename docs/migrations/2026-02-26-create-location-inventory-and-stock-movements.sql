@@ -6,7 +6,70 @@ BEGIN;
 -- Create location_inventory table to track per-location stock quantities
 CREATE TABLE IF NOT EXISTS public.location_inventory (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  location_id uuid NOT NULL,
+  location_id uuid NOT NULL,## Error Type
+Build Error
+
+## Error Message
+Parsing ecmascript source code failed
+
+## Build Output
+./components/admin/attendance-reports.tsx:12:15
+Parsing ecmascript source code failed
+  10 | import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+  11 | import { Alert, AlertDescription } from "@/components/ui/alert"
+> 12 |               return [
+     |               ^^^^^^^^
+> 13 |                 new Date(record.check_in_time).toLocaleDateString(),
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 14 |                 `"${record.user_profiles?.employee_id || "N/A"}"`,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 15 |                 `"${(record.user_profiles?.first_name || "") + (record.user_profiles?.last_name ? ' ' + record.user_profiles.last_name : '') || 'Unknown User'}"`,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 16 |                 `"${record.user_profiles?.departments?.name || "N/A"}"`,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 17 |                 `"${record.user_profiles?.assigned_location?.name || "N/A"}"`,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 18 |                 `"${new Date(record.check_in_time).toLocaleTimeString()}"`,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 19 |                 `"${checkInLabel}"`,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 20 |                 `"${record.is_check_in_outside_location ? "Outside Assigned Location" : "On-site"}"`,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 21 |                 `"${record.check_out_time ? new Date(record.check_out_time).toLocaleTimeString() : "N/A"}"`,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 22 |                 `"${checkOutLabel}"`,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 23 |                 `"${record.is_check_out_outside_location ? "Outside Assigned Location" : "On-site"}"`,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 24 |                 `"${record.early_checkout_reason || "-"}"`,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 25 |                 `"${record.early_checkout_proved_by || "-"}"`,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 26 |                 `"${record.lateness_reason || "-"}"`,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 27 |                 `"${record.lateness_proved_by || "-"}"`,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 28 |                 record.work_hours?.toFixed(2) || "0",
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 29 |                 `"${record.status}"`,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 30 |                 `"${record.is_check_in_outside_location || record.is_check_out_outside_location ? "Remote Work" : "On-site"}"`,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 31 |               ].join(",")
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  32 |   Download,
+  33 |   CalendarIcon,
+  34 |   Users,
+
+Return statement is not allowed here
+
+Import trace:
+  Server Component:
+    ./components/admin/attendance-reports.tsx
+    ./app/dashboard/reports/page.tsx
+
+Next.js version: 16.1.4 (Turbopack)
+
   item_id uuid NOT NULL,
   quantity numeric NOT NULL DEFAULT 0,
   created_at timestamptz NOT NULL DEFAULT now(),

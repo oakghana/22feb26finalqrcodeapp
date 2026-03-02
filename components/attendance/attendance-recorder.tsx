@@ -175,6 +175,7 @@ export function AttendanceRecorder({
   const [currentDate, setCurrentDate] = useState(new Date().toISOString().split("T")[0])
   const [showEarlyCheckoutDialog, setShowEarlyCheckoutDialog] = useState(false)
   const [earlyCheckoutReason, setEarlyCheckoutReason] = useState("")
+  const [earlyCheckoutProvedBy, setEarlyCheckoutProvedBy] = useState("")
   const [earlyCheckoutReasonRequired, setEarlyCheckoutReasonRequired] = useState(true)
   const [pendingCheckoutData, setPendingCheckoutData] = useState<{
     location: LocationData | null
@@ -182,6 +183,7 @@ export function AttendanceRecorder({
   } | null>(null)
   const [showLatenessDialog, setShowLatenessDialog] = useState(false)
   const [latenessReason, setLatenessReason] = useState("")
+  const [latenessProvedBy, setLatenessProvedBy] = useState("")
   const [showOffPremisesReasonDialog, setShowOffPremisesReasonDialog] = useState(false)
   const [offPremisesReason, setOffPremisesReason] = useState("")
   const [pendingOffPremisesLocation, setPendingOffPremisesLocation] = useState<LocationData | null>(null)
@@ -1291,10 +1293,27 @@ export function AttendanceRecorder({
     setIsLoading(true)
     try {
       // OPTIMIZATION: Fetch location data ONCE and reuse everywhere
-      const locationData = await getCurrentLocationData()
+      let locationData = await getCurrentLocationData()
       if (!locationData) {
         setIsLoading(false)
         return
+      }
+
+      // If the fresh GPS reading has significantly worse accuracy than our cached
+      // userLocation state (which already powered the "Within Range" badge), prefer
+      // the cached reading.  This avoids the inconsistency where the badge shows
+      // "Within Range" but the checkout button then fails because a new GPS poll
+      // happened to return a coarse/IP-based position.
+      if (
+        locationData.accuracy > 1500 &&
+        userLocation &&
+        userLocation.accuracy < locationData.accuracy
+      ) {
+        console.log('[v0] handleCheckOut: fresh GPS is less accurate than cached state — using cached userLocation', {
+          freshAccuracy: locationData.accuracy,
+          cachedAccuracy: userLocation.accuracy,
+        })
+        locationData = userLocation
       }
 
       // Get device-specific checkout radius
@@ -1445,7 +1464,7 @@ export function AttendanceRecorder({
   }
 
   // OPTIMIZATION: Extracted checkout API call into separate function for cleaner flow
-  const performCheckoutAPI = async (locationData: any, nearestLocation: any, reason: string) => {
+  const performCheckoutAPI = async (locationData: any, nearestLocation: any, reason: string, provedBy: string | null = null) => {
     try {
       const response = await fetch("/api/attendance/check-out", {
         method: "POST",
@@ -1460,6 +1479,7 @@ export function AttendanceRecorder({
           location_source: locationData.source,
           location_name: nearestLocation?.name || "Unknown Location",
           early_checkout_reason: reason || null,
+          early_checkout_proved_by: provedBy || null,
         }),
       })
 
@@ -1518,7 +1538,7 @@ export function AttendanceRecorder({
   }
 
   // Extracted check-in API call for lateness dialog flow
-  const performCheckInAPI = async (locationData: any, nearestLocation: any, reason: string) => {
+  const performCheckInAPI = async (locationData: any, nearestLocation: any, reason: string, provedBy: string | null = null) => {
     try {
       const deviceInfo = getDeviceInfo()
       const checkInData: any = {
@@ -1530,6 +1550,10 @@ export function AttendanceRecorder({
         location_source: locationData.source || null,
         location_id: nearestLocation?.id,
         lateness_reason: reason || null,
+      }
+
+      if (provedBy) {
+        checkInData.lateness_proved_by = provedBy
       }
 
       const response = await fetch("/api/attendance/check-in", {
@@ -1665,14 +1689,22 @@ export function AttendanceRecorder({
       }
     }
 
+    const prover = earlyCheckoutProvedBy.trim()
+
+    // Require prover when reason is required
+    if (earlyCheckoutReasonRequired && !prover) {
+      setFlashMessage({ message: "Please provide the name of the person who provided/verified this reason.", type: "error" })
+      return
+    }
+
     setShowEarlyCheckoutDialog(false)
     setIsLoading(true)
 
     try {
       const { location, nearestLocation } = pendingCheckoutData
 
-      // Use optimized checkout function with reason
-      await performCheckoutAPI(location, nearestLocation, earlyCheckoutReason)
+      // Use optimized checkout function with reason and prover
+      await performCheckoutAPI(location, nearestLocation, earlyCheckoutReason, prover || null)
     } catch (error) {
       console.error("[v0] Early checkout error:", error)
       setFlashMessage({
@@ -1686,6 +1718,7 @@ export function AttendanceRecorder({
     // Close the early checkout dialog and reset related state
     setShowEarlyCheckoutDialog(false)
     setEarlyCheckoutReason("")
+    setEarlyCheckoutProvedBy("")
     setPendingCheckoutData(null)
     setIsLoading(false)
   }
@@ -1708,14 +1741,21 @@ export function AttendanceRecorder({
       return
     }
 
+    const latenessProver = latenessProvedBy.trim()
+
+    if (!latenessProver) {
+      setFlashMessage({ message: "Please provide the name of the person who provided/verified this reason.", type: "error" })
+      return
+    }
+
     setShowLatenessDialog(false)
     setIsCheckingIn(true)
 
     try {
       const { location, nearestLocation } = pendingCheckInData
 
-      // Use optimized check-in function with reason
-      await performCheckInAPI(location, nearestLocation, latenessReason)
+      // Use optimized check-in function with reason and prover
+      await performCheckInAPI(location, nearestLocation, latenessReason, latenessProver || null)
     } catch (error) {
       console.error("[v0] Late check-in error:", error)
       setFlashMessage({
@@ -1728,6 +1768,7 @@ export function AttendanceRecorder({
   const handleLatenessCancel = () => {
     setShowLatenessDialog(false)
     setLatenessReason("")
+    setLatenessProvedBy("")
     setPendingCheckInData(null)
     setIsCheckingIn(false)
     setIsCheckInProcessing(false)
@@ -2284,6 +2325,17 @@ export function AttendanceRecorder({
                 <p className={`text-xs ${earlyCheckoutReasonRequired && earlyCheckoutReason.length < 10 ? 'text-red-500' : 'text-muted-foreground'}`}>
                   {earlyCheckoutReason.length}/500 characters {earlyCheckoutReasonRequired ? '(minimum 10 required)' : '(optional)'}
                 </p>
+                <div className="mt-2">
+                  <Label htmlFor="early-proved-by">Provided/Verified By {earlyCheckoutReasonRequired ? '*' : '(recommended)'}</Label>
+                  <input
+                    id="early-proved-by"
+                    value={earlyCheckoutProvedBy}
+                    onChange={(e) => setEarlyCheckoutProvedBy(e.target.value)}
+                    placeholder="Name or staff id of verifier"
+                    className="w-full p-2 border rounded-md focus:ring-2 focus:ring-primary"
+                    maxLength={200}
+                  />
+                </div>
               </div>
 
               <div className="flex gap-2">
@@ -2349,6 +2401,17 @@ export function AttendanceRecorder({
                 <p className={`text-xs ${latenessReason.length < 10 ? 'text-red-500' : 'text-muted-foreground'}`}>
                   {latenessReason.length}/500 characters (minimum 10 required)
                 </p>
+                <div className="mt-2">
+                  <Label htmlFor="lateness-proved-by">Provided/Verified By *</Label>
+                  <input
+                    id="lateness-proved-by"
+                    value={latenessProvedBy}
+                    onChange={(e) => setLatenessProvedBy(e.target.value)}
+                    placeholder="Name or staff id of verifier"
+                    className="w-full p-2 border rounded-md focus:ring-2 focus:ring-primary"
+                    maxLength={200}
+                  />
+                </div>
               </div>
 
               <div className="flex gap-2">

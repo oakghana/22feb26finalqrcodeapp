@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
                 sender_role: "system",
                 sender_label: "Security Alert",
                 notification_type: "security_violation",
-                message: `Security Alert: ${currentUserProfile.first_name} ${currentUserProfile.last_name} (${currentUserProfile.email}) attempted to login using a device already registered to ${existingBinding.user_profiles.first_name} ${existingBinding.user_profiles.last_name}. This may indicate device sharing or unauthorized access. Please investigate.`,
+                message: `Security Alert: ${currentUserProfile.first_name} ${currentUserProfile.last_name} (${currentUserProfile.email}) attempted to login using a device already registered to ${existingBinding.user_profiles?.first_name || 'Unknown'} ${existingBinding.user_profiles?.last_name || ''}. This may indicate device sharing or unauthorized access. Please investigate.`,
                 is_read: false,
               })
             }
@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
           allowed: false,
           violation: true,
           message: `This device is already registered to another staff member. Each device can only be used by one person. Please contact your supervisor or IT department.`,
-          bound_to_email: existingBinding.user_profiles.email,
+          bound_to_email: existingBinding.user_profiles?.email || null,
         })
       }
 

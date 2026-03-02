@@ -93,7 +93,7 @@ export function canCheckInAtTime(date: Date = new Date(), dept?: DeptInfo, role?
 }
 
 /**
- * Check if check-out time is allowed (before 6 PM / 18:00)
+ * Check if check-out time is allowed (before 9 PM / 21:00)
  * - Weekends: no time restrictions
  * - Operational and Security departments are exempt
  */
@@ -102,7 +102,7 @@ export function canCheckOutAtTime(date: Date = new Date(), dept?: DeptInfo, role
   if (isWeekend(date)) return true
   if (isExemptFromTimeRestrictions(dept, role)) return true
   const hours = date.getHours()
-  return hours < 18 // Allow check-out only before 6 PM
+  return hours < 21 // Allow check-out only before 9 PM
 }
 
 /**
@@ -113,10 +113,10 @@ export function getCheckInDeadline(): string {
 }
 
 /**
- * Get check-out deadline time (6 PM)
+ * Get check-out deadline time (9 PM)
  */
 export function getCheckOutDeadline(): string {
-  return "6:00 PM"
+  return "9:00 PM"
 }
 
 // -----------------------------------------------------------------------------

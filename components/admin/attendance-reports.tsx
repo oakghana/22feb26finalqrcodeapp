@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Download, CalendarIcon, Users, Clock, FileText, AlertTriangle, CheckCircle, FileSpreadsheet, MapPin, Loader2, Search, Eye, User, AlertCircle, BarChart3 } from "lucide-react"
 import {
   BarChart,
   Bar,
@@ -25,27 +26,11 @@ import {
   Area,
   AreaChart,
 } from "recharts"
-import {
-  BarChart3,
-  Download,
-  CalendarIcon,
-  Users,
-  Clock,
-  FileText,
-  AlertTriangle,
-  CheckCircle,
-  FileSpreadsheet,
-  MapPin,
-  Loader2,
-  Search,
-  Eye,
-  User,
-  AlertCircle,
-} from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 
 interface AttendanceRecord {
   id: string
+  user_id?: string
   google_maps_name?: string
   check_in_time: string
   check_out_time?: string
@@ -58,22 +43,22 @@ interface AttendanceRecord {
   early_checkout_reason?: string
   lateness_reason?: string
   notes?: string
-  user_profiles: {
-    first_name: string
-    last_name: string
-    employee_id: string
+  user_profiles?: {
+    first_name?: string
+    last_name?: string
+    employee_id?: string
     departments?: {
-      id: string
-      name: string
-      code: string
+      id?: string
+      name?: string
+      code?: string
     }
     assigned_location?: {
-      name: string
-      address: string
+      name?: string
+      address?: string
     }
     districts?: {
-      id: string
-      name: string
+      id?: string
+      name?: string
     }
   }
   check_in_location?: {
@@ -166,12 +151,51 @@ export function AttendanceReports() {
 
   const visibleColumnCount = 9
 
-  // Helper to safely format user display values when user_profiles may be null
-  const formatUserName = (p: AttendanceRecord["user_profiles"] | null | undefined) =>
-    p ? `${p.first_name} ${p.last_name}` : "Unknown User"
+  // Helper to safely format user display values when user_profiles may be missing.
+  // Prefer explicit name fields (first + last), then common full-name variants,
+  // then employee_id, then email, then fallback to a short user id marker.
+  const extractFullNameFromProfile = (p: AttendanceRecord["user_profiles"] | null | undefined) => {
+    if (!p) return null
+    const first = (p as any).first_name || null
+    const last = (p as any).last_name || null
+    if (first || last) return `${first || ''} ${last || ''}`.trim()
+    // Some profiles may store a single full name field
+    const full = (p as any).full_name || (p as any).name || (p as any).display_name || null
+    if (full) return String(full).trim()
+    // fallback to email if present
+    if ((p as any).email) return String((p as any).email)
+    return null
+  }
 
-  const userInitials = (p: AttendanceRecord["user_profiles"] | null | undefined) =>
-    `${p?.first_name?.[0] || "?"}${p?.last_name?.[0] || "?"}`
+  const userInitials = (p: AttendanceRecord["user_profiles"] | null | undefined) => {
+    const full = extractFullNameFromProfile(p)
+    if (!full) return "??"
+    const parts = full.split(/\s+/).filter(Boolean)
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+    return `${parts[0][0] || '?'}${parts[parts.length - 1][0] || '?'}`.toUpperCase()
+  }
+
+  const displayUserLabel = (record: AttendanceRecord) => {
+    const p = record.user_profiles
+    const name = extractFullNameFromProfile(p)
+    if (name) return name
+    if (p?.employee_id) return p.employee_id
+    // Try to extract name from email (e.g. john.doe@company.com -> John Doe)
+    const email = (p as any)?.email
+    if (email) {
+      const localPart = email.split('@')[0]
+      const nameParts = localPart.split(/[._-]/).filter(Boolean)
+      if (nameParts.length >= 2) {
+        return nameParts.map((s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()).join(' ')
+      }
+      return localPart.charAt(0).toUpperCase() + localPart.slice(1)
+    }
+    // For records without a profile, show location-based label
+    const location = record.check_in_location?.name || record.check_in_location_name || record.geofence_locations?.name
+    if (location) return `Staff at ${location}`
+    if (record.user_id) return `Staff (ID: ${record.user_id.slice(0, 8)})`
+    return 'Unknown Staff'
+  }
 
 
   const [exporting, setExporting] = useState(false)
@@ -224,7 +248,7 @@ export function AttendanceReports() {
         start_date: startDate,
         end_date: endDate,
         page: "1",
-        page_size: String(1000), // large page to capture many reason entries; adjust if dataset larger
+        page_size: String(1000),
       })
 
       if (selectedDepartment !== "all") params.append("department_id", selectedDepartment)
@@ -234,8 +258,49 @@ export function AttendanceReports() {
       const res = await fetch(`/api/admin/reports/attendance?${params}`)
       const json = await res.json()
       if (json.success) {
-        // use the server-provided records (unpaged large set)
-        setReasonsRecords(json.data.records || [])
+        let fetchedRecords: AttendanceRecord[] = json.data.records || []
+
+        // Proactively re-fetch profiles for ALL users who appear in reason records.
+        // This guarantees real name data regardless of what the API returned.
+        const reasonUserIds = [
+          ...new Set(
+            fetchedRecords
+              .filter((r) => r.lateness_reason || r.early_checkout_reason)
+              .map((r) => r.user_id)
+              .filter(Boolean)
+          ),
+        ]
+
+        if (reasonUserIds.length > 0) {
+          const supabase = createClient()
+          const { data: profiles } = await supabase
+            .from("user_profiles")
+            .select(`
+              id,
+              first_name,
+              last_name,
+              email,
+              employee_id,
+              department_id,
+              assigned_location_id,
+              departments ( id, name, code ),
+              assigned_location:geofence_locations!assigned_location_id ( id, name, address )
+            `)
+            .in("id", reasonUserIds)
+
+          if (profiles && profiles.length > 0) {
+            const profileMap = new Map(profiles.map((p: any) => [p.id, p]))
+            fetchedRecords = fetchedRecords.map((r) => {
+              const found = profileMap.get(r.user_id)
+              // Always override with the freshly fetched profile if available,
+              // so that names are always up-to-date on the reasons cards
+              if (found) return { ...r, user_profiles: found }
+              return r
+            })
+          }
+        }
+
+        setReasonsRecords(fetchedRecords)
       } else {
         console.error("Failed to fetch reasons:", json.error)
       }
@@ -358,7 +423,9 @@ export function AttendanceReports() {
             "Check Out Location",
             "Check Out Status",
             "Early Checkout Reason",
+            "Early Checkout Provided By",
             "Lateness Reason",
+            "Lateness Provided By",
             "Work Hours",
             "Status",
             "Location Status",
@@ -370,12 +437,12 @@ export function AttendanceReports() {
 
               const checkOutLabel = record.check_out_location?.name || record.check_out_location_name || record.check_in_location_name || "N/A"
 
-              return [
+              const row = [
                 new Date(record.check_in_time).toLocaleDateString(),
                 `"${record.user_profiles?.employee_id || "N/A"}"`,
                 `"${(record.user_profiles?.first_name || "") + (record.user_profiles?.last_name ? ' ' + record.user_profiles.last_name : '') || 'Unknown User'}"`,
-                `"${record.user_profiles.departments?.name || "N/A"}"`,
-                `"${record.user_profiles.assigned_location?.name || "N/A"}"`,
+                `"${record.user_profiles?.departments?.name || "N/A"}"`,
+                `"${record.user_profiles?.assigned_location?.name || "N/A"}"`,
                 `"${new Date(record.check_in_time).toLocaleTimeString()}"`,
                 `"${checkInLabel}"`,
                 `"${record.is_check_in_outside_location ? "Outside Assigned Location" : "On-site"}"`,
@@ -383,11 +450,14 @@ export function AttendanceReports() {
                 `"${checkOutLabel}"`,
                 `"${record.is_check_out_outside_location ? "Outside Assigned Location" : "On-site"}"`,
                 `"${record.early_checkout_reason || "-"}"`,
+                `"${record.early_checkout_proved_by || "-"}"`,
                 `"${record.lateness_reason || "-"}"`,
+                `"${record.lateness_proved_by || "-"}"`,
                 record.work_hours?.toFixed(2) || "0",
                 `"${record.status}"`,
                 `"${record.is_check_in_outside_location || record.is_check_out_outside_location ? "Remote Work" : "On-site"}"`,
-              ].join(",")
+              ]
+              return row.join(",")
             }),
         ].join("\n")
 
@@ -401,53 +471,155 @@ export function AttendanceReports() {
         document.body.removeChild(a)
         window.URL.revokeObjectURL(url)
         console.log("[v0] CSV export completed successfully")
-      } else {
-        const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
+      } else if (format === "excel") {
+        // Build Excel client-side from the already-loaded enriched records (same data as the Detailed view)
+        const XLSX = await import("xlsx")
 
-        const response = await fetch("/api/admin/reports/export", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          signal: controller.signal,
-          body: JSON.stringify({
-            format,
-            data: records,
-            summary,
-            filters: {
-              startDate,
-              endDate,
-              locationId: selectedLocation !== "all" ? selectedLocation : null,
-              districtId: selectedDistrict !== "all" ? selectedDistrict : null,
-              departmentId: selectedDepartment !== "all" ? selectedDepartment : null,
-              reportType: "attendance",
-            },
+        const sheetData = [
+          [
+            "Date",
+            "Employee ID",
+            "Name",
+            "Department",
+            "Assigned Location",
+            "Check In Time",
+            "Check In Location",
+            "Check In Status",
+            "Check Out Time",
+            "Check Out Location",
+            "Check Out Status",
+            "Early Checkout Reason",
+            "Early Checkout Provided By",
+            "Lateness Reason",
+            "Lateness Provided By",
+            "Work Hours",
+            "Status",
+            "Location Status",
+          ],
+          ...records.map((record) => {
+            const checkInLabel = record.google_maps_name && record.is_check_in_outside_location
+              ? record.google_maps_name
+              : record.check_in_location?.name || record.check_in_location_name || "N/A"
+
+            const checkOutLabel =
+              record.check_out_location?.name || record.check_out_location_name || record.check_in_location_name || "N/A"
+
+            const firstName = record.user_profiles?.first_name || ""
+            const lastName = record.user_profiles?.last_name || ""
+            const fullName = (firstName + (lastName ? " " + lastName : "")).trim() || "Unknown User"
+
+            return [
+              new Date(record.check_in_time).toLocaleDateString(),
+              record.user_profiles?.employee_id || "N/A",
+              fullName,
+              record.user_profiles?.departments?.name || "N/A",
+              record.user_profiles?.assigned_location?.name || "N/A",
+              new Date(record.check_in_time).toLocaleTimeString(),
+              checkInLabel,
+              record.is_check_in_outside_location ? "Outside Assigned Location" : "On-site",
+              record.check_out_time ? new Date(record.check_out_time).toLocaleTimeString() : "Not checked out",
+              checkOutLabel,
+              record.is_check_out_outside_location ? "Outside Assigned Location" : "On-site",
+              record.early_checkout_reason || "-",
+              record.early_checkout_proved_by || "-",
+              record.lateness_reason || "-",
+              record.lateness_proved_by || "-",
+              record.work_hours != null ? Number(record.work_hours.toFixed(2)) : 0,
+              record.status ? record.status.charAt(0).toUpperCase() + record.status.slice(1) : "N/A",
+              record.is_check_in_outside_location || record.is_check_out_outside_location ? "Remote Work" : "On-site",
+            ]
           }),
+        ]
+
+        const wb = XLSX.utils.book_new()
+        const ws = XLSX.utils.aoa_to_sheet(sheetData)
+
+        // Column widths matching the detailed view columns
+        ws["!cols"] = [
+          { wch: 12 }, // Date
+          { wch: 14 }, // Employee ID
+          { wch: 24 }, // Name
+          { wch: 18 }, // Department
+          { wch: 28 }, // Assigned Location
+          { wch: 14 }, // Check In Time
+          { wch: 28 }, // Check In Location
+          { wch: 22 }, // Check In Status
+          { wch: 16 }, // Check Out Time
+          { wch: 28 }, // Check Out Location
+          { wch: 22 }, // Check Out Status
+          { wch: 30 }, // Early Checkout Reason
+          { wch: 22 }, // Early Checkout Provided By
+          { wch: 30 }, // Lateness Reason
+          { wch: 22 }, // Lateness Provided By
+          { wch: 12 }, // Work Hours
+          { wch: 12 }, // Status
+          { wch: 16 }, // Location Status
+        ]
+
+        XLSX.utils.book_append_sheet(wb, ws, "Attendance Report")
+
+        const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" })
+        const blob = new Blob([wbout], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         })
-
-        clearTimeout(timeoutId)
-
-        if (!response.ok) {
-          const errorText = await response.text()
-          console.error(`[v0] Export API error:`, errorText)
-          throw new Error(`Export failed: ${response.status} ${response.statusText}`)
-        }
-
-        const blob = await response.blob()
-        if (blob.size === 0) {
-          throw new Error("Export returned empty file")
-        }
-
         const url = window.URL.createObjectURL(blob)
         const a = document.createElement("a")
         a.href = url
-        a.download = `qcc-attendance-report-${startDate}-to-${endDate}.${format === "excel" ? "xlsx" : "pdf"}`
+        a.download = `qcc-attendance-report-${startDate}-to-${endDate}.xlsx`
         document.body.appendChild(a)
         a.click()
         document.body.removeChild(a)
         window.URL.revokeObjectURL(url)
-        console.log(`[v0] ${format} export completed successfully`)
+        console.log("[v0] Excel export completed successfully")
+      } else {
+        // PDF export via server
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 120000)
+
+        try {
+          const response = await fetch("/api/admin/reports/export", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            signal: controller.signal,
+            body: JSON.stringify({
+              format,
+              data: records,
+              summary,
+              filters: {
+                startDate,
+                endDate,
+                locationId: selectedLocation !== "all" ? selectedLocation : null,
+                districtId: selectedDistrict !== "all" ? selectedDistrict : null,
+                departmentId: selectedDepartment !== "all" ? selectedDepartment : null,
+                reportType: "attendance",
+              },
+            }),
+          })
+
+          clearTimeout(timeoutId)
+
+          if (!response.ok) {
+            const errorText = await response.text()
+            console.error(`[v0] Export API error:`, errorText)
+            throw new Error(`Export failed: ${response.status} ${response.statusText}`)
+          }
+
+          const blob = await response.blob()
+          if (blob.size === 0) throw new Error("Export returned empty file")
+
+          const url = window.URL.createObjectURL(blob)
+          const a = document.createElement("a")
+          a.href = url
+          a.download = `qcc-attendance-report-${startDate}-to-${endDate}.pdf`
+          document.body.appendChild(a)
+          a.click()
+          document.body.removeChild(a)
+          window.URL.revokeObjectURL(url)
+          console.log(`[v0] PDF export completed successfully`)
+        } catch (error) {
+          clearTimeout(timeoutId)
+          throw error
+        }
       }
     } catch (error) {
       console.error("[v0] Export error:", error)
@@ -1222,12 +1394,12 @@ export function AttendanceReports() {
                                 {userInitials(record.user_profiles)}
                               </div>
                               <div>
-                                <p className="font-medium text-gray-900 dark:text-slate-100">{formatUserName(record.user_profiles)}</p>
+                                <p className="font-medium text-gray-900 dark:text-slate-100">{displayUserLabel(record)}</p>
                                 <p className="text-sm text-gray-600 dark:text-slate-300">{record.user_profiles?.employee_id || 'N/A'}</p>
                               </div>
                             </div>
                           </TableCell>
-                          <TableCell className={compactMode ? "py-1" : "py-2"}><Badge variant="outline" className={compactMode ? "font-medium text-gray-700 dark:text-slate-200 text-xs" : "font-medium text-gray-700 dark:text-slate-200 text-sm"}>{record.user_profiles.departments?.name || 'N/A'}</Badge></TableCell>
+                          <TableCell className={compactMode ? "py-1" : "py-2"}><Badge variant="outline" className={compactMode ? "font-medium text-gray-700 dark:text-slate-200 text-xs" : "font-medium text-gray-700 dark:text-slate-200 text-sm"}>{record.user_profiles?.departments?.name || 'N/A'}</Badge></TableCell>
                           <TableCell className={compactMode ? "py-1 text-gray-800 dark:text-slate-200 text-xs" : "py-2 text-gray-800 dark:text-slate-200 text-sm"}>{new Date(record.check_in_time).toLocaleTimeString()}</TableCell>
                           <TableCell className="py-2 text-gray-800 dark:text-slate-200 text-sm"><div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-gray-500 dark:text-slate-400" /><span className="text-sm text-gray-700 dark:text-slate-300 max-w-xs truncate block" title={getLocationLabel(record, 'in')}>{getLocationLabel(record, 'in')}</span></div></TableCell>
                           <TableCell className={compactMode ? "hidden sm:table-cell py-1 text-gray-800 dark:text-slate-200 text-xs" : "hidden sm:table-cell py-2 text-gray-800 dark:text-slate-200 text-sm"}>{record.check_out_time ? new Date(record.check_out_time).toLocaleTimeString() : <span className="text-gray-400 dark:text-slate-400">-</span>}</TableCell>
@@ -1290,7 +1462,7 @@ export function AttendanceReports() {
                     <div key={record.id} className="p-2 bg-white rounded-md shadow-sm border">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm font-medium">{formatUserName(record.user_profiles)} <span className="text-xs text-gray-500">({record.user_profiles?.employee_id || 'N/A'})</span></p>
+                          <p className="text-sm font-medium">{displayUserLabel(record)} <span className="text-xs text-gray-500">({record.user_profiles?.employee_id || record.user_id?.slice(0,8) || 'N/A'})</span></p>
                           <p className="text-xs text-gray-500">{new Date(record.check_in_time).toLocaleDateString()} • {new Date(record.check_in_time).toLocaleTimeString()}</p>
                         </div>
                         <div className="text-right">
@@ -1357,44 +1529,76 @@ export function AttendanceReports() {
                       <CardTitle className="flex items-center gap-2">
                         <Clock className="h-5 w-5 text-orange-500" />
                         Lateness Reasons
+                        <Badge className="ml-auto bg-orange-100 text-orange-700 border-orange-200">{latenessList.length}</Badge>
                       </CardTitle>
                       <CardDescription>Staff explanations for arriving after 9:00 AM</CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <div className="space-y-4">
-                        {latenessPageItems.map((record) => (
-                            <div key={record.id} className="p-3 bg-orange-50 rounded-md border border-orange-200">
-                              <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                  <p className="font-medium text-gray-900">{formatUserName(record.user_profiles)}</p>
-                                  <p className="text-sm text-gray-600">
-                                    {new Date(record.check_in_time).toLocaleDateString()} at {new Date(record.check_in_time).toLocaleTimeString()}
+                      <div className="space-y-3">
+                        {latenessPageItems.map((record) => {
+                          const staffName = displayUserLabel(record)
+                          const empId = record.user_profiles?.employee_id
+                          const dept = record.user_profiles?.departments?.name
+                          const initials = staffName
+                            .split(' ')
+                            .filter((w: string) => w.length > 0 && !w.startsWith('(') && w !== 'Staff' && w !== 'at')
+                            .slice(0, 2)
+                            .map((w: string) => w[0].toUpperCase())
+                            .join('') || '?'
+                          return (
+                            <div key={record.id} className="rounded-lg border border-orange-200 bg-orange-50 overflow-hidden">
+                              {/* Staff identity header */}
+                              <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-orange-100">
+                                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-orange-500 text-white flex items-center justify-center font-bold text-sm">
+                                  {initials}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-base font-bold text-gray-900 leading-tight truncate">{staffName}</p>
+                                  <p className="text-xs text-gray-500 mt-0.5">
+                                    {empId ? <span className="font-medium text-gray-700">ID: {empId}</span> : null}
+                                    {empId && dept ? <span className="mx-1 text-gray-300">·</span> : null}
+                                    {dept ? <span>{dept}</span> : null}
+                                    {!empId && !dept ? <span className="italic text-gray-400">No profile on file</span> : null}
                                   </p>
-
-                                  {/* Location line */}
-                                  <div className="mt-1 text-xs text-gray-500 flex items-center gap-2">
-                                    <MapPin className="h-4 w-4" />
-                                    <span className="max-w-xs truncate block" title={getLocationLabel(record, 'in')}>{getLocationLabel(record, 'in')}</span>
+                                </div>
+                                {dept && (
+                                  <Badge variant="secondary" className="flex-shrink-0 text-xs bg-orange-100 text-orange-800 border-orange-200">
+                                    {dept}
+                                  </Badge>
+                                )}
+                              </div>
+                              {/* Check-in time + location */}
+                              <div className="px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 bg-orange-50">
+                                <span className="flex items-center gap-1">
+                                  <Clock className="h-3 w-3 text-orange-400" />
+                                  {new Date(record.check_in_time).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                                  {' — '}
+                                  <span className="font-semibold text-orange-700">{new Date(record.check_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                </span>
+                                <span className="flex items-center gap-1 max-w-[180px] truncate" title={getLocationLabel(record, 'in')}>
+                                  <MapPin className="h-3 w-3 text-orange-400 flex-shrink-0" />
+                                  {getLocationLabel(record, 'in')}
+                                </span>
+                              </div>
+                              {/* Reason */}
+                              <div className="px-4 py-3">
+                                <p className="text-xs font-semibold text-orange-500 uppercase tracking-wide mb-1">Reason for Lateness</p>
+                                <p className="text-sm text-gray-800 leading-relaxed">{record.lateness_reason}</p>
+                                {record.lateness_proved_by && (
+                                  <div className="mt-2 pt-2 border-t border-orange-200 flex items-center gap-1.5">
+                                    <span className="text-xs font-semibold text-green-600">✓ Verified by:</span>
+                                    <span className="text-xs text-green-700 font-medium">{record.lateness_proved_by}</span>
                                   </div>
-
-                                  <p className="text-sm text-orange-700 mt-2 font-medium">
-                                    {record.lateness_reason}
-                                  </p>
-                                </div>
-
-                                <div className="flex flex-col gap-2 ml-2">
-                                  <Badge variant="secondary">
-                                    {record.user_profiles?.departments?.name || "N/A"}
-                                  </Badge>
-                                  <Badge variant="outline" className="text-xs max-w-xs truncate block" title={getLocationLabel(record, 'in')}>
-                                    {getLocationLabel(record, 'in')}
-                                  </Badge>
-                                </div>
+                                )}
                               </div>
                             </div>
-                          ))}
+                          )
+                        })}
                         {latenessList.length === 0 && (
-                          <p className="text-gray-500 text-center py-4">No lateness reasons recorded</p>
+                          <div className="text-center py-8">
+                            <Clock className="h-10 w-10 text-gray-300 mx-auto mb-2" />
+                            <p className="text-gray-400 text-sm">No lateness reasons recorded</p>
+                          </div>
                         )}
 
                         {/* Lateness pagination controls */}
@@ -1418,44 +1622,76 @@ export function AttendanceReports() {
                       <CardTitle className="flex items-center gap-2">
                         <AlertCircle className="h-5 w-5 text-blue-500" />
                         Early Checkout Reasons
+                        <Badge className="ml-auto bg-blue-100 text-blue-700 border-blue-200">{earlyList.length}</Badge>
                       </CardTitle>
                       <CardDescription>Staff explanations for leaving before standard hours</CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <div className="space-y-4">
-                        {earlyPageItems.map((record) => (
-                            <div key={record.id} className="p-3 bg-blue-50 rounded-md border border-blue-200">
-                              <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                  <p className="font-medium text-gray-900">{formatUserName(record.user_profiles)}</p>
-                                  <p className="text-sm text-gray-600">
-                                    {new Date(record.check_out_time!).toLocaleDateString()} at {new Date(record.check_out_time!).toLocaleTimeString()}
+                      <div className="space-y-3">
+                        {earlyPageItems.map((record) => {
+                          const staffName = displayUserLabel(record)
+                          const empId = record.user_profiles?.employee_id
+                          const dept = record.user_profiles?.departments?.name
+                          const initials = staffName
+                            .split(' ')
+                            .filter((w: string) => w.length > 0 && !w.startsWith('(') && w !== 'Staff' && w !== 'at')
+                            .slice(0, 2)
+                            .map((w: string) => w[0].toUpperCase())
+                            .join('') || '?'
+                          return (
+                            <div key={record.id} className="rounded-lg border border-blue-200 bg-blue-50 overflow-hidden">
+                              {/* Staff identity header */}
+                              <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-blue-100">
+                                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold text-sm">
+                                  {initials}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-base font-bold text-gray-900 leading-tight truncate">{staffName}</p>
+                                  <p className="text-xs text-gray-500 mt-0.5">
+                                    {empId ? <span className="font-medium text-gray-700">ID: {empId}</span> : null}
+                                    {empId && dept ? <span className="mx-1 text-gray-300">·</span> : null}
+                                    {dept ? <span>{dept}</span> : null}
+                                    {!empId && !dept ? <span className="italic text-gray-400">No profile on file</span> : null}
                                   </p>
-
-                                  {/* Location line */}
-                                  <div className="mt-1 text-xs text-gray-500 flex items-center gap-2">
-                                    <MapPin className="h-4 w-4" />
-                                    <span className="max-w-xs truncate block" title={getLocationLabel(record, 'out')}>{getLocationLabel(record, 'out')}</span>
+                                </div>
+                                {dept && (
+                                  <Badge variant="secondary" className="flex-shrink-0 text-xs bg-blue-100 text-blue-800 border-blue-200">
+                                    {dept}
+                                  </Badge>
+                                )}
+                              </div>
+                              {/* Check-out time + location */}
+                              <div className="px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 bg-blue-50">
+                                <span className="flex items-center gap-1">
+                                  <Clock className="h-3 w-3 text-blue-400" />
+                                  {new Date(record.check_out_time!).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                                  {' — '}
+                                  <span className="font-semibold text-blue-700">{new Date(record.check_out_time!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                </span>
+                                <span className="flex items-center gap-1 max-w-[180px] truncate" title={getLocationLabel(record, 'out')}>
+                                  <MapPin className="h-3 w-3 text-blue-400 flex-shrink-0" />
+                                  {getLocationLabel(record, 'out')}
+                                </span>
+                              </div>
+                              {/* Reason */}
+                              <div className="px-4 py-3">
+                                <p className="text-xs font-semibold text-blue-500 uppercase tracking-wide mb-1">Reason for Early Checkout</p>
+                                <p className="text-sm text-gray-800 leading-relaxed">{record.early_checkout_reason}</p>
+                                {record.early_checkout_proved_by && (
+                                  <div className="mt-2 pt-2 border-t border-blue-200 flex items-center gap-1.5">
+                                    <span className="text-xs font-semibold text-green-600">✓ Verified by:</span>
+                                    <span className="text-xs text-green-700 font-medium">{record.early_checkout_proved_by}</span>
                                   </div>
-
-                                  <p className="text-sm text-blue-700 mt-2 font-medium">
-                                    {record.early_checkout_reason}
-                                  </p>
-                                </div>
-
-                                <div className="flex flex-col gap-2 ml-2">
-                                  <Badge variant="secondary">
-                                    {record.user_profiles?.departments?.name || "N/A"}
-                                  </Badge>
-                                  <Badge variant="outline" className="text-xs max-w-xs truncate block" title={getLocationLabel(record, 'out')}>
-                                    {getLocationLabel(record, 'out')}
-                                  </Badge>
-                                </div>
+                                )}
                               </div>
                             </div>
-                          ))}
+                          )
+                        })}
                         {earlyList.length === 0 && (
-                          <p className="text-gray-500 text-center py-4">No early checkout reasons recorded</p>
+                          <div className="text-center py-8">
+                            <AlertCircle className="h-10 w-10 text-gray-300 mx-auto mb-2" />
+                            <p className="text-gray-400 text-sm">No early checkout reasons recorded</p>
+                          </div>
                         )}
 
                         {/* Early checkout pagination controls */}

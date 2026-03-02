@@ -66,9 +66,9 @@ export default function MissedCheckoutsPage() {
 
       const formatted = data.map((record: any) => ({
         id: record.id,
-        staff_name: `${record.user_profiles.first_name} ${record.user_profiles.last_name}`,
-        employee_id: record.user_profiles.employee_id || "N/A",
-        department: record.user_profiles.departments?.name || "N/A",
+        staff_name: `${record.user_profiles?.first_name || 'Unknown'} ${record.user_profiles?.last_name || ''}`,
+        employee_id: record.user_profiles?.employee_id || "N/A",
+        department: record.user_profiles?.departments?.name || "N/A",
         check_in_time: record.check_in_time,
         check_in_location_name: record.check_in_location_name || "Unknown",
         attendance_date: record.attendance_date,

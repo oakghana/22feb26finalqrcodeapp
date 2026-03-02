@@ -172,7 +172,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const { latitude, longitude, location_id, device_info, qr_code_used, qr_timestamp, lateness_reason, accuracy, location_timestamp, location_source, override_request, override_reason } = body
+    const { latitude, longitude, location_id, device_info, qr_code_used, qr_timestamp, lateness_reason, lateness_proved_by, lateness_proved_by_id, accuracy, location_timestamp, location_source, override_request, override_reason } = body
 
     // Fetch geo settings from system settings for server-side enforcement
     const { data: sysSettings } = await supabase.from("system_settings").select("geo_settings").maybeSingle()
@@ -678,6 +678,8 @@ export async function POST(request: NextRequest) {
     // Add lateness reason if provided
     if (lateness_reason) {
       attendanceData.lateness_reason = lateness_reason.trim()
+      if (lateness_proved_by) attendanceData.lateness_proved_by = String(lateness_proved_by).trim()
+      if (lateness_proved_by_id) attendanceData.lateness_proved_by_id = lateness_proved_by_id
     }
 
     if (userProfile?.assigned_location_id && userProfile.assigned_location_id !== location_id) {
