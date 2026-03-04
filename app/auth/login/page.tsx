@@ -17,6 +17,7 @@ import { useState } from "react"
 import Image from "next/image"
 import { useNotifications } from "@/components/ui/notification-system"
 import { Eye, EyeOff } from "lucide-react"
+import { IndependenceDayFlyer } from "@/components/celebrations/independence-day-flyer"
 
 export default function LoginPage() {
   const [identifier, setIdentifier] = useState("")
@@ -482,51 +483,28 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-3 sm:p-4 fade-in" style={{background: 'linear-gradient(135deg, #007A5E 0%, #005a47 50%, #003d33 100%)'}}>
-      {/* Ghana Independence Celebration Banner */}
-      <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-[#CE1126] via-[#FCD116] to-[#007A5E] h-1 sm:h-1.5"></div>
-      
-      <div className="w-full max-w-md scale-in relative">
-        {/* Celebration Badge */}
-        <div className="text-center mb-6 slide-down">
-          <div className="inline-block bg-white/10 backdrop-blur-md border border-white/20 rounded-full px-6 py-2 mb-4">
-            <p className="text-white text-xs sm:text-sm font-semibold tracking-wide">🇬🇭 Happy 69th Independence Day 🇬🇭</p>
-          </div>
-        </div>
-
-        <Card className="shadow-2xl border-0 backdrop-blur-xl" style={{backgroundColor: 'rgba(255, 255, 255, 0.95)'}}>
+    <div className="min-h-screen flex items-center justify-center bg-background p-3 sm:p-4 fade-in">
+      <IndependenceDayFlyer />
+      <div className="w-full max-w-md scale-in">
+        <Card className="glass-effect shadow-2xl border-border/50">
           <CardHeader className="text-center space-y-5 pb-6 sm:pb-8 px-4 sm:px-8 pt-6 sm:pt-8">
-            {/* Ghana Flag with Heart Shape - Decorative */}
-            <div className="flex justify-center mb-2">
-              <div className="relative w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center">
-                {/* Flag stripes */}
-                <div className="absolute inset-0 rounded-3xl overflow-hidden shadow-lg border-2 border-[#007A5E] scale-in" style={{background: 'linear-gradient(to bottom, #CE1126 0%, #CE1126 33%, #FCD116 33%, #FCD116 66%, #007A5E 66%, #007A5E 100%)'}}>
-                  {/* Black Star */}
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="text-3xl sm:text-4xl">⭐</div>
-                  </div>
-                </div>
+            <div className="flex justify-center">
+              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-card border-2 border-primary/20 flex items-center justify-center shadow-lg scale-in">
+                <Image
+                  src="/images/qcc-logo.png"
+                  alt="QCC Logo - Quality Control Company Limited"
+                  width={80}
+                  height={80}
+                  className="rounded-full object-contain"
+                  priority
+                />
               </div>
             </div>
-            
-            <div className="space-y-3 slide-up">
-              <div className="flex justify-center">
-                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-br from-[#CE1126] to-[#007A5E] flex items-center justify-center shadow-lg border-3 border-white">
-                  <Image
-                    src="/images/qcc-logo.png"
-                    alt="QCC Logo - Quality Control Company Limited"
-                    width={60}
-                    height={60}
-                    className="rounded-full object-contain"
-                    priority
-                  />
-                </div>
-              </div>
-              <CardTitle className="text-2xl sm:text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-[#CE1126] via-[#FCD116] to-[#007A5E] tracking-wide">QCC ATTENDANCE</CardTitle>
+            <div className="space-y-2 slide-up">
+              <CardTitle className="text-xl sm:text-2xl font-bold text-primary tracking-wide">QCC ATTENDANCE</CardTitle>
               <CardDescription className="text-xs sm:text-sm text-muted-foreground">
                 Sign in with your Staff Number, Email or use OTP
               </CardDescription>
-              <p className="text-xs text-[#007A5E] font-medium pt-1">Building Prosperity • Celebrating Ghana</p>
             </div>
           </CardHeader>
           <CardContent className="px-4 sm:px-8 pb-6 sm:pb-8">
@@ -715,12 +693,10 @@ export default function LoginPage() {
               <p className="text-sm text-muted-foreground">Don't have an account?</p>
             </div>
 
-          <div className="mt-6 text-center border-t-2 border-gradient pt-6 space-y-2" style={{borderTopColor: '#CE1126'}}>
-            <p className="text-sm font-semibold text-transparent bg-clip-text bg-gradient-to-r from-[#CE1126] via-[#FCD116] to-[#007A5E]">HAPPY 69TH INDEPENDENCE DAY</p>
-            <p className="text-xs text-muted-foreground">Quality Control Company Limited</p>
-            <p className="text-xs text-muted-foreground">Intranet Portal - Powered by IT Department</p>
-            <p className="text-xs text-[#007A5E] font-medium mt-2">Building Prosperity - Celebrating Ghana 🇬🇭</p>
-            <p className="text-xs text-muted-foreground font-mono text-center mt-2">V.1.1.2-28-26</p>
+          <div className="mt-6 text-center border-t border-border pt-6">
+            <p className="text-sm font-medium text-foreground">Quality Control Company Limited</p>
+            <p className="text-xs text-muted-foreground mt-1">Intranet Portal - Powered by IT Department</p>
+            <p className="text-xs text-muted-foreground mt-2 font-mono text-center">V.1.1.2-28-26</p>
           </div>
           </CardContent>
         </Card>
