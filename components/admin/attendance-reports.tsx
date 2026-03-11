@@ -134,9 +134,8 @@ export function AttendanceReports() {
         const data = await res.json()
         if (data.success && data.user) {
           setCurrentUserRole(data.user.role)
-          if (data.user.role === "regional_manager" && data.user.assigned_location_id) {
+          if (data.user.assigned_location_id) {
             setCurrentUserLocationId(data.user.assigned_location_id)
-            setSelectedLocation(data.user.assigned_location_id)
           }
         }
       } catch (err) {
@@ -864,32 +863,20 @@ export function AttendanceReports() {
               <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
                 <MapPin className="h-4 w-4 text-green-600" />
                 Location
-                {currentUserRole === "regional_manager" && (
-                  <span className="text-xs font-normal text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full">Your location</span>
-                )}
               </label>
-              {currentUserRole === "regional_manager" ? (
-                <div className={`w-full border border-gray-200 rounded-md bg-gray-100 text-gray-600 flex items-center gap-2 ${compactMode ? 'px-2 py-1 text-xs' : 'px-3 py-2 text-sm'}`}>
-                  <MapPin className="h-3.5 w-3.5 text-green-600 shrink-0" />
-                  <span className="truncate">
-                    {locations.find((l) => l.id === currentUserLocationId)?.name || "Your Assigned Location"}
-                  </span>
-                </div>
-              ) : (
-                <Select value={selectedLocation} onValueChange={setSelectedLocation}>
-                  <SelectTrigger className={`w-full border border-gray-200 rounded-md focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-150 bg-gray-50 hover:bg-white ${compactMode ? 'px-2 py-1 text-xs' : 'px-3 py-2 text-sm'}`}>
-                    <SelectValue placeholder="All Locations" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Locations</SelectItem>
-                    {locations.map((location) => (
-                      <SelectItem key={location.id} value={location.id}>
-                        {location.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
+              <Select value={selectedLocation} onValueChange={setSelectedLocation}>
+                <SelectTrigger className={`w-full border border-gray-200 rounded-md focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-150 bg-gray-50 hover:bg-white ${compactMode ? 'px-2 py-1 text-xs' : 'px-3 py-2 text-sm'}`}>
+                  <SelectValue placeholder="All Locations" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Locations</SelectItem>
+                  {locations.map((location) => (
+                    <SelectItem key={location.id} value={location.id}>
+                      {location.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-3">
