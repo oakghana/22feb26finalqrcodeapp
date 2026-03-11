@@ -84,20 +84,9 @@ export async function GET(request: NextRequest) {
       // For department heads, we need to filter by their department
       // This is a workaround until we can do a proper join at query time
       // We'll filter the results after fetching user profiles
-    } else if (profile.role === "regional_manager" && profile.assigned_location_id) {
-      // Regional managers are scoped to their assigned location.
-      // The location filter param may override to a sub-location but we always
-      // enforce the manager's own location as the ceiling scope via a subquery on user_profiles.
-      const { data: locationStaff } = await supabase
-        .from("user_profiles")
-        .select("id")
-        .eq("assigned_location_id", profile.assigned_location_id)
-
-      const locationUserIds = (locationStaff || []).map((s: any) => s.id)
-      if (locationUserIds.length > 0) {
-        query = query.in("user_id", locationUserIds)
-      }
     }
+    // regional_manager: no location restriction — they can see all check-ins/check-outs
+    // across all locations. Location filter from the UI (safeLocationId) still applies below.
 
     if (safeLocationId) {
       query = query.eq("check_in_location_id", safeLocationId)
