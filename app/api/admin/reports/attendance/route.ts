@@ -80,16 +80,51 @@ export async function GET(request: NextRequest) {
       query = query.eq("user_id", user.id)
     } else if (userId) {
       query = query.eq("user_id", userId)
-    } else if (profile.role === "department_head") {
-      // For department heads, we need to filter by their department
-      // This is a workaround until we can do a proper join at query time
-      // We'll filter the results after fetching user profiles
     }
-    // regional_manager: no location restriction — they can see all check-ins/check-outs
-    // across all locations. Location filter from the UI (safeLocationId) still applies below.
+    // department_head, regional_manager, admin: department/location filtering handled below via
+    // user_profiles subquery so we always get accurate results regardless of pagination.
 
+    // If a location filter is selected, scope records by check_in_location_id
     if (safeLocationId) {
       query = query.eq("check_in_location_id", safeLocationId)
+    }
+
+    // If a department filter is provided, resolve the matching user IDs first,
+    // then restrict the attendance query to those users. This works for all roles
+    // (admin, regional_manager, department_head) and ensures location+dept filters combine correctly.
+    if (safeDepartmentId && profile.role !== "staff") {
+      let deptUsersQuery = supabase
+        .from("user_profiles")
+        .select("id")
+        .eq("department_id", safeDepartmentId)
+
+      // Department heads are further restricted to their own department (enforced above already
+      // via profile.department_id check). For regional_manager we don't restrict by location here
+      // because they can now see all locations.
+      if (profile.role === "department_head") {
+        deptUsersQuery = deptUsersQuery.eq("department_id", profile.department_id)
+      }
+
+      const { data: deptUsers } = await deptUsersQuery
+      const deptUserIds = (deptUsers || []).map((u: any) => u.id)
+      if (deptUserIds.length > 0) {
+        query = query.in("user_id", deptUserIds)
+      } else {
+        // No users in this department → return empty result set
+        query = query.eq("user_id", "00000000-0000-0000-0000-000000000000")
+      }
+    } else if (profile.role === "department_head" && !safeDepartmentId) {
+      // Department head with no specific department filter: scope to their own department
+      const { data: deptUsers } = await supabase
+        .from("user_profiles")
+        .select("id")
+        .eq("department_id", profile.department_id)
+      const deptUserIds = (deptUsers || []).map((u: any) => u.id)
+      if (deptUserIds.length > 0) {
+        query = query.in("user_id", deptUserIds)
+      } else {
+        query = query.eq("user_id", "00000000-0000-0000-0000-000000000000")
+      }
     }
 
     // Apply ordering and pagination
@@ -171,51 +206,9 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // All department and location filtering is now done at the DB query level above.
+    // Post-fetch we only need district filtering (no DB column to filter on directly).
     let filteredRecords = attendanceRecords
-
-    if (profile.role === "department_head") {
-      // Department heads can see all records from their department
-      console.log('[v0] Reports API - Filtering for department head, dept_id:', profile.department_id)
-      
-      filteredRecords = attendanceRecords.filter((record) => {
-        const user = userMap.get(record.user_id)
-        
-        if (user) {
-          const matches = user.department_id === profile.department_id
-          if (!matches) {
-            console.log('[v0] Reports API - Excluding record, dept mismatch:', {
-              recordId: record.id,
-              userDept: user.department_id,
-              headDept: profile.department_id
-            })
-          }
-          return matches
-        } else {
-          // If no profile, include it (belongs to their staff based on attendance)
-          return true
-        }
-      })
-    } else if (profile.role === "regional_manager") {
-      // Records are already scoped to the manager's location in the query above.
-      // Apply an optional department filter if the manager chose one.
-      if (safeDepartmentId) {
-        filteredRecords = attendanceRecords.filter((record) => {
-          const u = userMap.get(record.user_id)
-          return u ? u.department_id === safeDepartmentId : true
-        })
-      } else {
-        filteredRecords = attendanceRecords
-      }
-    } else if (profile.role === "staff") {
-      // Staff can only see their own records (already filtered in query above)
-      filteredRecords = attendanceRecords
-    } else if (safeDepartmentId) {
-      // Admins can filter by specific department
-      filteredRecords = attendanceRecords.filter((record) => {
-        const u = userMap.get(record.user_id)
-        return u?.department_id === safeDepartmentId
-      })
-    }
 
     if (safeDistrictId) {
       filteredRecords = filteredRecords.filter((record) => {
@@ -302,27 +295,57 @@ export async function GET(request: NextRequest) {
 
     // Calculate summary statistics
     // Calculate total matching records (without pagination)
-    let totalRecords = 0
+    // Use filtered record count as total (accurate because DB-level filters applied above)
+    let totalRecords = filteredRecords.length
     try {
-      const countQuery = supabase
+      // Build a count query that mirrors the main query filters exactly
+      let countQuery = supabase
         .from("attendance_records")
         .select("id", { count: "exact", head: true })
         .gte("check_in_time", `${startDate}T00:00:00`)
         .lte("check_in_time", `${endDate}T23:59:59`)
 
       if (profile.role === "staff") {
-        countQuery.eq("user_id", user.id)
+        countQuery = countQuery.eq("user_id", user.id)
       } else if (userId) {
-        countQuery.eq("user_id", userId)
+        countQuery = countQuery.eq("user_id", userId)
       }
-      if (safeLocationId) countQuery.eq("check_in_location_id", safeLocationId)
+      if (safeLocationId) countQuery = countQuery.eq("check_in_location_id", safeLocationId)
+
+      // Mirror department user scoping for the count
+      if (safeDepartmentId && profile.role !== "staff") {
+        let deptUsersCountQuery = supabase
+          .from("user_profiles")
+          .select("id")
+          .eq("department_id", safeDepartmentId)
+        if (profile.role === "department_head") {
+          deptUsersCountQuery = deptUsersCountQuery.eq("department_id", profile.department_id)
+        }
+        const { data: deptUsersCount } = await deptUsersCountQuery
+        const deptUserIdsCount = (deptUsersCount || []).map((u: any) => u.id)
+        if (deptUserIdsCount.length > 0) {
+          countQuery = countQuery.in("user_id", deptUserIdsCount)
+        } else {
+          countQuery = countQuery.eq("user_id", "00000000-0000-0000-0000-000000000000")
+        }
+      } else if (profile.role === "department_head" && !safeDepartmentId) {
+        const { data: deptUsersCount } = await supabase
+          .from("user_profiles")
+          .select("id")
+          .eq("department_id", profile.department_id)
+        const deptUserIdsCount = (deptUsersCount || []).map((u: any) => u.id)
+        if (deptUserIdsCount.length > 0) {
+          countQuery = countQuery.in("user_id", deptUserIdsCount)
+        } else {
+          countQuery = countQuery.eq("user_id", "00000000-0000-0000-0000-000000000000")
+        }
+      }
 
       const { count: countResult, error: countError } = await countQuery
       if (countError) {
         console.error("[v0] Reports API - Count query error:", countError)
       } else {
         totalRecords = countResult || 0
-        console.log("[v0] Reports API - Total records:", totalRecords)
       }
     } catch (err) {
       console.error("[v0] Reports API - Count exception:", err)
