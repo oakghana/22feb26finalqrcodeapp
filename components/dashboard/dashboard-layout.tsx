@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Sidebar } from "./sidebar"
@@ -9,6 +9,10 @@ import { OfflineIndicator } from "@/components/ui/offline-indicator"
 import { PWAUpdateNotification } from "@/components/ui/pwa-update-notification"
 import { FloatingHomeButton } from "./floating-home-button"
 import { MobileBottomNav } from "./mobile-bottom-nav"
+import { toast } from "@/hooks/use-toast"
+
+const APPROVAL_ROLES = ["admin", "department_head", "regional_manager"]
+const POLL_INTERVAL_MS = 30_000 // 30 seconds
 
 interface DashboardLayoutProps {
   children: React.ReactNode
@@ -20,6 +24,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const [loading, setLoading] = useState(true)
   const [isCollapsed, setIsCollapsed] = useState(false)
   const router = useRouter()
+  const lastSeenIdRef = useRef<string | null>(null)
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -57,6 +63,62 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
     checkAuth()
   }, [router])
+
+  // Poll for new approval notifications for privileged roles and show toast
+  useEffect(() => {
+    if (!profile || !APPROVAL_ROLES.includes(profile.role)) return
+
+    const checkNewNotifications = async () => {
+      try {
+        const res = await fetch("/api/staff/notifications")
+        const json = await res.json()
+        if (!json.success || !Array.isArray(json.data)) return
+
+        // Only care about off-premises and excuse duty requests that are unread
+        const actionableTypes = ["offpremises_checkin_request", "excuse_duty_request"]
+        const relevant = json.data.filter(
+          (n: any) => actionableTypes.includes(n.type) && !n.is_read
+        )
+        if (relevant.length === 0) return
+
+        // On first poll, just record the latest id as baseline (don't toast existing ones)
+        if (lastSeenIdRef.current === null) {
+          lastSeenIdRef.current = relevant[0]?.id ?? ""
+          return
+        }
+
+        // Find notifications newer than the last seen
+        const lastIdx = relevant.findIndex((n: any) => n.id === lastSeenIdRef.current)
+        const newOnes = lastIdx === -1 ? relevant : relevant.slice(0, lastIdx)
+
+        if (newOnes.length === 0) return
+
+        // Update baseline
+        lastSeenIdRef.current = newOnes[0].id
+
+        // Show a toast for each new notification (up to 3)
+        newOnes.slice(0, 3).forEach((n: any) => {
+          const isOffPremises = n.type === "offpremises_checkin_request"
+          toast({
+            title: isOffPremises ? "Off-Premises Check-In Request" : "Excuse Duty Submission",
+            description: n.message,
+            duration: 10000,
+          })
+        })
+      } catch {
+        // silently ignore polling errors
+      }
+    }
+
+    // Kick off first check after a short delay to avoid running before auth settles
+    const firstCheckTimer = setTimeout(checkNewNotifications, 3000)
+    pollTimerRef.current = setInterval(checkNewNotifications, POLL_INTERVAL_MS)
+
+    return () => {
+      clearTimeout(firstCheckTimer)
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current)
+    }
+  }, [profile])
 
   if (loading) {
     return (

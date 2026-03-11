@@ -251,7 +251,7 @@ export async function POST(request: NextRequest) {
 
     // Send notifications to managers
     const managerNotifications = managers.map((manager: any) => ({
-      user_id: manager.id,
+      recipient_id: manager.id,
       type: "offpremises_checkin_request",
       title: "Off-Premises Check-In Request",
       message: `${userProfile.first_name} ${userProfile.last_name} is requesting to check-in from outside their assigned location: ${current_location.display_name || current_location.name}. Reason: ${reason || 'Not provided'}. Please review and approve or deny.`,
