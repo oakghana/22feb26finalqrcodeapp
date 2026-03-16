@@ -251,17 +251,23 @@ export async function POST(request: NextRequest) {
       }
 
       // Send notification to the staff member
-      await supabase.from("staff_notifications").insert({
-        user_id: pendingRequest.user_id,
-        type: "offpremises_checkin_approved",
-        title: "Off-Premises Check-In Approved",
-        message: `Your off-premises check-in request from ${pendingRequest.google_maps_name || pendingRequest.current_location_name} has been approved. You are checked in to your assigned location on official duty.`,
-        data: {
-          request_id: request_id,
-          attendance_record_id: attendanceRecord?.id,
-        },
-        is_read: false,
-      }).catch((err) => console.warn("[v0] Failed to send approval notification:", err))
+      const { error: notificationError } = await supabase
+        .from("staff_notifications")
+        .insert({
+          user_id: pendingRequest.user_id,
+          type: "offpremises_checkin_approved",
+          title: "Off-Premises Check-In Approved",
+          message: `Your off-premises check-in request from ${pendingRequest.google_maps_name || pendingRequest.current_location_name} has been approved. You are checked in to your assigned location on official duty.`,
+          data: {
+            request_id: request_id,
+            attendance_record_id: attendanceRecord?.id,
+          },
+          is_read: false,
+        })
+
+      if (notificationError) {
+        console.warn("[v0] Failed to send approval notification:", notificationError)
+      }
 
       console.log("[v0] Request approved successfully:", request_id)
       
@@ -296,16 +302,22 @@ export async function POST(request: NextRequest) {
       }
 
       // Send notification to the staff member
-      await supabase.from("staff_notifications").insert({
-        user_id: pendingRequest.user_id,
-        type: "offpremises_checkin_rejected",
-        title: "Off-Premises Check-In Rejected",
-        message: `Your off-premises check-in request from ${pendingRequest.google_maps_name || pendingRequest.current_location_name} has been rejected. ${comments ? `Reason: ${comments}` : ""}`,
-        data: {
-          request_id: request_id,
-        },
-        is_read: false,
-      }).catch((err) => console.warn("[v0] Failed to send rejection notification:", err))
+      const { error: notificationError } = await supabase
+        .from("staff_notifications")
+        .insert({
+          user_id: pendingRequest.user_id,
+          type: "offpremises_checkin_rejected",
+          title: "Off-Premises Check-In Rejected",
+          message: `Your off-premises check-in request from ${pendingRequest.google_maps_name || pendingRequest.current_location_name} has been rejected. ${comments ? `Reason: ${comments}` : ""}`,
+          data: {
+            request_id: request_id,
+          },
+          is_read: false,
+        })
+
+      if (notificationError) {
+        console.warn("[v0] Failed to send rejection notification:", notificationError)
+      }
 
       console.log("[v0] Request rejected successfully:", request_id)
 
