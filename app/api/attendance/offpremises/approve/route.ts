@@ -210,26 +210,65 @@ export async function POST(request: NextRequest) {
       // Default: approve as a CHECK‑IN (existing behavior)
       console.log("[v0] Approving request and creating check-in")
       
-      // Create attendance record for the user with ORIGINAL request time (not approval time)
-      const { data: attendanceRecord, error: attendanceError } = await supabase
+      // First check if user already has an attendance record for today
+      const today = new Date().toISOString().split('T')[0]
+      const { data: existingAttendance, error: fetchError } = await supabase
         .from("attendance_records")
-        .insert({
-          user_id: pendingRequest.user_id,
-          check_in_time: pendingRequest.created_at, // Use original request time, not approval time
-          actual_location_name: pendingRequest.current_location_name,
-          actual_latitude: pendingRequest.latitude,
-          actual_longitude: pendingRequest.longitude,
-          on_official_duty_outside_premises: true,
-          device_info: pendingRequest.device_info,
-          check_in_type: "offpremises_confirmed",
-          notes: `Off-premises check-in approved by manager. ${comments ? "Comments: " + comments : ""}`,
-        })
-        .select()
+        .select("id")
+        .eq("user_id", pendingRequest.user_id)
+        .gte("check_in_time", `${today}T00:00:00`)
+        .lt("check_in_time", `${today}T23:59:59`)
         .single()
 
-      if (attendanceError) {
-        console.error("[v0] Failed to create attendance record:", attendanceError)
-        // Continue even if notification fails
+      let attendanceRecord = existingAttendance
+
+      if (existingAttendance?.id) {
+        // Update existing record with off-premises flag
+        console.log("[v0] Updating existing attendance record for off-premises approval")
+        const { data: updatedRecord, error: updateAttendanceError } = await supabase
+          .from("attendance_records")
+          .update({
+            on_official_duty_outside_premises: true,
+            actual_location_name: pendingRequest.current_location_name,
+            actual_latitude: pendingRequest.latitude,
+            actual_longitude: pendingRequest.longitude,
+            device_info: pendingRequest.device_info,
+            notes: `Off-premises check-in approved by manager. ${comments ? "Comments: " + comments : ""}`,
+          })
+          .eq("id", existingAttendance.id)
+          .select()
+          .single()
+
+        if (updateAttendanceError) {
+          console.error("[v0] Failed to update attendance record:", updateAttendanceError)
+        } else {
+          attendanceRecord = updatedRecord
+        }
+      } else {
+        // Create new attendance record
+        console.log("[v0] Creating new attendance record for off-premises approval")
+        const { data: newRecord, error: attendanceError } = await supabase
+          .from("attendance_records")
+          .insert({
+            user_id: pendingRequest.user_id,
+            check_in_time: pendingRequest.created_at, // Use original request time, not approval time
+            actual_location_name: pendingRequest.current_location_name,
+            actual_latitude: pendingRequest.latitude,
+            actual_longitude: pendingRequest.longitude,
+            on_official_duty_outside_premises: true,
+            device_info: pendingRequest.device_info,
+            check_in_type: "offpremises_confirmed",
+            notes: `Off-premises check-in approved by manager. ${comments ? "Comments: " + comments : ""}`,
+          })
+          .select()
+          .single()
+
+        if (attendanceError) {
+          console.error("[v0] Failed to create attendance record:", attendanceError)
+          // Continue even if attendance creation fails
+        } else {
+          attendanceRecord = newRecord
+        }
       }
 
       // Update pending request status
