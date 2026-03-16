@@ -232,13 +232,14 @@ export async function POST(request: NextRequest) {
         // Continue even if notification fails
       }
 
-      // Update pending request status
+      // Update pending request status with approval notes
       const { error: updateError2 } = await supabase
         .from("pending_offpremises_checkins")
         .update({
           status: "approved",
           approved_by_id: user_id,
           approved_at: new Date().toISOString(),
+          approval_notes: comments || null,
         })
         .eq("id", request_id)
 
@@ -276,7 +277,7 @@ export async function POST(request: NextRequest) {
     } else {
       console.log("[v0] Rejecting off-premises check-in request:", request_id)
 
-      // Update pending request status
+      // Update pending request status with rejection reason and approval notes
       const { error: updateError } = await supabase
         .from("pending_offpremises_checkins")
         .update({
@@ -284,6 +285,7 @@ export async function POST(request: NextRequest) {
           approved_by_id: user_id,
           approved_at: new Date().toISOString(),
           rejection_reason: comments,
+          approval_notes: comments || null,
         })
         .eq("id", request_id)
 

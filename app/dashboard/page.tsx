@@ -19,7 +19,9 @@ import {
   CheckCircle2,
   BarChart3,
   Zap,
-  Star
+  Star,
+  MapPin,
+  FileText
 } from "lucide-react"
 import Link from "next/link"
 import RequestLeaveButtonWrapper from "@/components/leave/request-leave-button-client"
@@ -203,6 +205,71 @@ export default async function DashboardPage() {
                 </Button>
               </AlertDescription>
             </Alert>
+          )}
+
+          {/* Off-Premises Management Section for Managers */}
+          {(profile?.role === "admin" || profile?.role === "department_head" || profile?.role === "regional_manager") && (
+            <div className="grid gap-6 lg:grid-cols-3">
+              <Card className="bg-gradient-to-br from-white/90 to-white/50 dark:from-slate-900/90 dark:to-slate-800/50 backdrop-blur-xl border-white/20 dark:border-slate-700/20 shadow-xl hover:shadow-2xl transition-all duration-300">
+                <CardHeader className="pb-4">
+                  <CardTitle className="text-lg font-bold flex items-center gap-2">
+                    <MapPin className="h-5 w-5 text-blue-600" />
+                    Off-Premises Statistics
+                  </CardTitle>
+                  <CardDescription>Real-time metrics on check-in activities</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                    Monitor pending, approved, and rejected off-premises requests with detailed analytics and trends.
+                  </p>
+                  <Button asChild size="sm" className="w-full bg-blue-600 hover:bg-blue-700">
+                    <Link href="/dashboard/offpremises-statistics">
+                      View Statistics
+                    </Link>
+                  </Button>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-gradient-to-br from-white/90 to-white/50 dark:from-slate-900/90 dark:to-slate-800/50 backdrop-blur-xl border-white/20 dark:border-slate-700/20 shadow-xl hover:shadow-2xl transition-all duration-300">
+                <CardHeader className="pb-4">
+                  <CardTitle className="text-lg font-bold flex items-center gap-2">
+                    <AlertCircle className="h-5 w-5 text-orange-600" />
+                    Approval Requests
+                  </CardTitle>
+                  <CardDescription>Pending off-premises requests awaiting review</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                    Review and approve staff requests for off-premises check-ins with enhanced validation.
+                  </p>
+                  <Button asChild size="sm" className="w-full bg-orange-600 hover:bg-orange-700">
+                    <Link href="/offpremises-approvals">
+                      Review Requests
+                    </Link>
+                  </Button>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-gradient-to-br from-white/90 to-white/50 dark:from-slate-900/90 dark:to-slate-800/50 backdrop-blur-xl border-white/20 dark:border-slate-700/20 shadow-xl hover:shadow-2xl transition-all duration-300">
+                <CardHeader className="pb-4">
+                  <CardTitle className="text-lg font-bold flex items-center gap-2">
+                    <FileText className="h-5 w-5 text-green-600" />
+                    Activity Report
+                  </CardTitle>
+                  <CardDescription>Comprehensive historical report with filters</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                    Generate detailed reports with filtering, sorting, and CSV export capabilities.
+                  </p>
+                  <Button asChild size="sm" className="w-full bg-green-600 hover:bg-green-700">
+                    <Link href="/dashboard/offpremises-report">
+                      View Report
+                    </Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
           )}
 
           {/* Key Metrics Grid */}
