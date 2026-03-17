@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, useMemo, memo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -67,6 +67,154 @@ interface ExcuseDutyReviewClientProps {
   userDepartment?: string
 }
 
+// Memoized status badge component
+const StatusBadge = memo(function StatusBadgeComponent({ status }: { status: string }) {
+  switch (status) {
+    case "approved":
+      return (
+        <Badge className="bg-green-100 text-green-800 border-green-200">
+          <CheckCircle className="h-3 w-3 mr-1" />
+          Approved
+        </Badge>
+      )
+    case "rejected":
+      return (
+        <Badge variant="destructive">
+          <XCircle className="h-3 w-3 mr-1" />
+          Rejected
+        </Badge>
+      )
+    case "pending":
+    default:
+      return (
+        <Badge variant="secondary">
+          <Clock className="h-3 w-3 mr-1" />
+          Pending Review
+        </Badge>
+      )
+  }
+})
+
+// Memoized document type badge component
+const DocumentTypeBadge = memo(function DocumentTypeBadgeComponent({ type }: { type: string }) {
+  const colors = {
+    medical: "bg-blue-100 text-blue-800 border-blue-200",
+    emergency: "bg-red-100 text-red-800 border-red-200",
+    personal: "bg-purple-100 text-purple-800 border-purple-200",
+    official: "bg-green-100 text-green-800 border-green-200",
+  }
+
+  return (
+    <Badge className={colors[type as keyof typeof colors] || "bg-gray-100 text-gray-800 border-gray-200"}>
+      {type.charAt(0).toUpperCase() + type.slice(1)}
+    </Badge>
+  )
+})
+
+// Memoized table row component
+const DocumentRow = memo(function DocumentRowComponent({
+  doc,
+  onView,
+  onReview,
+}: {
+  doc: ExcuseDocument
+  onView: (fileUrl: string, fileName: string) => void
+  onReview: (doc: ExcuseDocument) => void
+}) {
+  return (
+    <TableRow>
+      <TableCell>
+        <div>
+          <div className="font-medium">
+            {doc.user_profiles?.first_name || "Unknown"} {doc.user_profiles?.last_name || ""}
+          </div>
+          <div className="text-sm text-muted-foreground">{doc.user_profiles?.employee_id || "N/A"}</div>
+        </div>
+      </TableCell>
+      <TableCell>
+        <div>
+          <div className="font-medium">{doc.user_profiles?.departments?.name || "N/A"}</div>
+          <div className="text-sm text-muted-foreground">{doc.user_profiles?.departments?.code || ""}</div>
+        </div>
+      </TableCell>
+      <TableCell>
+        <div className="flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-muted-foreground" />
+          {new Date(doc.excuse_date).toLocaleDateString()}
+        </div>
+      </TableCell>
+      <TableCell>
+        <DocumentTypeBadge type={doc.document_type} />
+      </TableCell>
+      <TableCell>
+        <div className="flex items-center gap-2">
+          <FileText className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm truncate max-w-[150px]" title={doc.document_name}>
+            {doc.document_name}
+          </span>
+        </div>
+      </TableCell>
+      <TableCell>
+        <div className="max-w-[200px] truncate" title={doc.excuse_reason}>
+          {doc.excuse_reason}
+        </div>
+      </TableCell>
+      <TableCell>
+        <StatusBadge status={doc.status} />
+      </TableCell>
+      <TableCell>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onView(doc.file_url, doc.document_name)}
+            className="flex items-center gap-1"
+          >
+            <Eye className="h-3 w-3" />
+            View
+          </Button>
+          {doc.status === "pending" && (
+            <Button size="sm" onClick={() => onReview(doc)} className="flex items-center gap-1">
+              <FileText className="h-3 w-3" />
+              Review
+            </Button>
+          )}
+        </div>
+      </TableCell>
+    </TableRow>
+  )
+})
+
+// Memoized stats card component
+const StatsCard = memo(function StatsCardComponent({
+  title,
+  count,
+  icon: Icon,
+  color,
+}: {
+  title: string
+  count: number
+  icon: React.ReactNode
+  color: string
+}) {
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-sm font-medium">{title}</CardTitle>
+        {Icon}
+      </CardHeader>
+      <CardContent>
+        <div className={`text-2xl font-bold ${color}`}>{count}</div>
+        <p className="text-xs text-muted-foreground">
+          {title === "Pending Review" && "Awaiting your review"}
+          {title === "Approved" && "Successfully approved"}
+          {title === "Rejected" && "Rejected submissions"}
+        </p>
+      </CardContent>
+    </Card>
+  )
+})
+
 export function ExcuseDutyReviewClient({ userRole, userDepartment }: ExcuseDutyReviewClientProps) {
   const [excuseDocuments, setExcuseDocuments] = useState<ExcuseDocument[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
@@ -77,7 +225,6 @@ export function ExcuseDutyReviewClient({ userRole, userDepartment }: ExcuseDutyR
   const [reviewStatus, setReviewStatus] = useState<"approved" | "rejected">("approved")
   const [reviewNotes, setReviewNotes] = useState("")
   const [submitting, setSubmitting] = useState(false)
-  // Default to pending to speed initial load; department heads see their department by default
   const [statusFilter, setStatusFilter] = useState("pending")
   const [departmentFilter, setDepartmentFilter] = useState<string>(() => {
     if (userRole !== "admin" && userDepartment) return userDepartment
@@ -89,20 +236,35 @@ export function ExcuseDutyReviewClient({ userRole, userDepartment }: ExcuseDutyR
   const [page, setPage] = useState<number>(1)
   const [perPage, setPerPage] = useState<number>(50)
   const [hasMore, setHasMore] = useState<boolean>(false)
+  const [requestCache, setRequestCache] = useState<Map<string, any>>(new Map())
 
+  // Calculate stats once using useMemo
+  const stats = useMemo(() => {
+    return {
+      pending: excuseDocuments.filter((doc) => doc.status === "pending").length,
+      approved: excuseDocuments.filter((doc) => doc.status === "approved").length,
+      rejected: excuseDocuments.filter((doc) => doc.status === "rejected").length,
+    }
+  }, [excuseDocuments])
+
+  // Reset to first page when filters change
   useEffect(() => {
-    // When filters change, reset to first page
     setPage(1)
   }, [statusFilter, departmentFilter, docTypeFilter, dateFrom, dateTo, userRole, userDepartment])
 
+  // Fetch departments once for admins
   useEffect(() => {
-    fetchExcuseDocuments()
     if (userRole === "admin") {
       fetchDepartments()
     }
+  }, [userRole])
+
+  // Fetch documents when filters or page changes
+  useEffect(() => {
+    fetchExcuseDocuments()
   }, [statusFilter, departmentFilter, docTypeFilter, dateFrom, dateTo, page, perPage, userRole, userDepartment])
 
-  const fetchDepartments = async () => {
+  const fetchDepartments = useCallback(async () => {
     try {
       const response = await fetch("/api/admin/departments")
       if (response.ok) {
@@ -112,10 +274,24 @@ export function ExcuseDutyReviewClient({ userRole, userDepartment }: ExcuseDutyR
     } catch (error) {
       console.error("Failed to fetch departments:", error)
     }
-  }
+  }, [])
 
-  const fetchExcuseDocuments = async () => {
+  const getCacheKey = useCallback(() => {
+    return `${statusFilter}|${departmentFilter}|${docTypeFilter}|${dateFrom}|${dateTo}|${page}|${perPage}`
+  }, [statusFilter, departmentFilter, docTypeFilter, dateFrom, dateTo, page, perPage])
+
+  const fetchExcuseDocuments = useCallback(async () => {
     try {
+      const cacheKey = getCacheKey()
+
+      // Check cache
+      if (requestCache.has(cacheKey)) {
+        const cached = requestCache.get(cacheKey)
+        setExcuseDocuments(cached.data)
+        setHasMore(cached.hasMore)
+        return
+      }
+
       setLoading(true)
       const params = new URLSearchParams()
       if (statusFilter !== "all") {
@@ -137,21 +313,31 @@ export function ExcuseDutyReviewClient({ userRole, userDepartment }: ExcuseDutyR
       if (!response.ok) {
         const text = await response.text().catch(() => "")
         console.error("Excuse documents fetch failed:", response.status, text)
-        throw new Error(`Failed to fetch excuse documents: ${response.status} ${text}`)
+        throw new Error(`Failed to fetch excuse documents: ${response.status}`)
       }
 
       const data = await response.json()
-      setExcuseDocuments(data.excuseDocuments || [])
-      setHasMore(Boolean(data.pagination && data.pagination.hasMore))
+      const documents = data.excuseDocuments || []
+      const hasMoreData = Boolean(data.pagination && data.pagination.hasMore)
+
+      // Update cache
+      setRequestCache((prev) => {
+        const newCache = new Map(prev)
+        newCache.set(cacheKey, { data: documents, hasMore: hasMoreData })
+        return newCache
+      })
+
+      setExcuseDocuments(documents)
+      setHasMore(hasMoreData)
     } catch (error) {
       console.error("Failed to fetch excuse documents:", error)
       setError("Failed to load excuse documents")
     } finally {
       setLoading(false)
     }
-  }
+  }, [getCacheKey, requestCache, statusFilter, departmentFilter, docTypeFilter, dateFrom, dateTo, page, perPage, userRole])
 
-  const handleReview = async () => {
+  const handleReview = useCallback(async () => {
     if (!selectedDoc) return
 
     setSubmitting(true)
@@ -173,6 +359,8 @@ export function ExcuseDutyReviewClient({ userRole, userDepartment }: ExcuseDutyR
         throw new Error(errorData.error || "Failed to review document")
       }
 
+      // Clear cache and refetch
+      setRequestCache(new Map())
       await fetchExcuseDocuments()
 
       setReviewDialogOpen(false)
@@ -185,72 +373,24 @@ export function ExcuseDutyReviewClient({ userRole, userDepartment }: ExcuseDutyR
     } finally {
       setSubmitting(false)
     }
-  }
+  }, [selectedDoc, reviewStatus, reviewNotes, fetchExcuseDocuments])
 
-  const openReviewDialog = (doc: ExcuseDocument) => {
+  const openReviewDialog = useCallback((doc: ExcuseDocument) => {
     setSelectedDoc(doc)
     setReviewStatus("approved")
     setReviewNotes("")
     setReviewDialogOpen(true)
-  }
+  }, [])
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "approved":
-        return (
-          <Badge className="bg-green-100 text-green-800 border-green-200">
-            <CheckCircle className="h-3 w-3 mr-1" />
-            Approved
-          </Badge>
-        )
-      case "rejected":
-        return (
-          <Badge variant="destructive">
-            <XCircle className="h-3 w-3 mr-1" />
-            Rejected
-          </Badge>
-        )
-      case "pending":
-      default:
-        return (
-          <Badge variant="secondary">
-            <Clock className="h-3 w-3 mr-1" />
-            Pending Review
-          </Badge>
-        )
-    }
-  }
-
-  const getDocumentTypeBadge = (type: string) => {
-    const colors = {
-      medical: "bg-blue-100 text-blue-800 border-blue-200",
-      emergency: "bg-red-100 text-red-800 border-red-200",
-      personal: "bg-purple-100 text-purple-800 border-purple-200",
-      official: "bg-green-100 text-green-800 border-green-200",
-    }
-
-    return (
-      <Badge className={colors[type as keyof typeof colors] || "bg-gray-100 text-gray-800 border-gray-200"}>
-        {type.charAt(0).toUpperCase() + type.slice(1)}
-      </Badge>
-    )
-  }
-
-  const viewDocument = (fileUrl: string, fileName: string) => {
+  const viewDocument = useCallback((fileUrl: string, fileName: string) => {
     if (fileUrl.startsWith("data:")) {
-      // For data URLs, open directly
       window.open(fileUrl, "_blank", "width=800,height=600,scrollbars=yes,resizable=yes")
     } else {
-      // For regular URLs, open directly
       window.open(fileUrl, "_blank", "width=800,height=600,scrollbars=yes,resizable=yes")
     }
-  }
+  }, [])
 
-  const pendingCount = excuseDocuments.filter((doc) => doc.status === "pending").length
-  const approvedCount = excuseDocuments.filter((doc) => doc.status === "approved").length
-  const rejectedCount = excuseDocuments.filter((doc) => doc.status === "rejected").length
-
-  if (loading) {
+  if (loading && excuseDocuments.length === 0) {
     return (
       <Card>
         <CardContent className="flex items-center justify-center py-8">
@@ -260,6 +400,259 @@ export function ExcuseDutyReviewClient({ userRole, userDepartment }: ExcuseDutyR
       </Card>
     )
   }
+
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-4 md:grid-cols-3">
+        <StatsCard title="Pending Review" count={stats.pending} icon={<Clock className="h-4 w-4 text-muted-foreground" />} color="text-orange-600" />
+        <StatsCard title="Approved" count={stats.approved} icon={<CheckCircle className="h-4 w-4 text-muted-foreground" />} color="text-green-600" />
+        <StatsCard title="Rejected" count={stats.rejected} icon={<XCircle className="h-4 w-4 text-muted-foreground" />} color="text-red-600" />
+      </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Excuse Duty Submissions
+              </CardTitle>
+              <CardDescription>
+                {userRole === "admin"
+                  ? "Review excuse duty submissions from all departments"
+                  : "Review excuse duty submissions from your department"}
+              </CardDescription>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <Filter className="h-4 w-4 text-muted-foreground" />
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue placeholder="Filter by status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="approved">Approved</SelectItem>
+                  <SelectItem value="rejected">Rejected</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={docTypeFilter} onValueChange={setDocTypeFilter}>
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue placeholder="Document type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="medical">Medical</SelectItem>
+                  <SelectItem value="emergency">Emergency</SelectItem>
+                  <SelectItem value="personal">Personal</SelectItem>
+                  <SelectItem value="official">Official</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={dateFrom ?? ""}
+                  onChange={(e) => setDateFrom(e.target.value || null)}
+                  className="input input-sm"
+                  title="From"
+                />
+                <input
+                  type="date"
+                  value={dateTo ?? ""}
+                  onChange={(e) => setDateTo(e.target.value || null)}
+                  className="input input-sm"
+                  title="To"
+                />
+              </div>
+
+              {userRole === "admin" && (
+                <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Filter by department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Departments</SelectItem>
+                    {departments.map((dept) => (
+                      <SelectItem key={dept.id} value={dept.id}>
+                        <div className="flex items-center gap-2">
+                          <Building2 className="h-3 w-3" />
+                          {dept.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {error && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          {excuseDocuments.length === 0 ? (
+            <div className="text-center py-8">
+              <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">
+                {statusFilter === "all" && departmentFilter === "all"
+                  ? "No excuse duty submissions found"
+                  : "No submissions found matching the selected filters"}
+              </p>
+            </div>
+          ) : (
+            <div className="border rounded-lg overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Staff Member</TableHead>
+                    <TableHead>Department</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Document</TableHead>
+                    <TableHead>Reason</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {excuseDocuments.map((doc) => (
+                    <DocumentRow key={doc.id} doc={doc} onView={viewDocument} onReview={openReviewDialog} />
+                  ))}
+                </TableBody>
+              </Table>
+              <div className="flex items-center justify-between p-3 border-t">
+                <div className="flex items-center gap-2">
+                  <Button size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>
+                    Previous
+                  </Button>
+                  <div className="text-sm text-muted-foreground">Page {page}</div>
+                  <Button size="sm" onClick={() => hasMore && setPage((p) => p + 1)} disabled={!hasMore}>
+                    Next
+                  </Button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="text-sm text-muted-foreground">Per page:</div>
+                  <Select value={String(perPage)} onValueChange={(v) => setPerPage(Number(v))}>
+                    <SelectTrigger className="w-[80px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="10">10</SelectItem>
+                      <SelectItem value="25">25</SelectItem>
+                      <SelectItem value="50">50</SelectItem>
+                      <SelectItem value="100">100</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={reviewDialogOpen} onOpenChange={setReviewDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Review Excuse Duty Submission</DialogTitle>
+            <DialogDescription>Review and approve or reject this excuse duty submission</DialogDescription>
+          </DialogHeader>
+
+          {selectedDoc && (
+            <div className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="text-sm font-medium">Staff Member</label>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedDoc.user_profiles?.first_name || "Unknown"} {selectedDoc.user_profiles?.last_name || ""}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Employee ID</label>
+                  <p className="text-sm text-muted-foreground">{selectedDoc.user_profiles?.employee_id || "N/A"}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Department</label>
+                  <p className="text-sm text-muted-foreground">{selectedDoc.user_profiles?.departments?.name || "N/A"}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Excuse Date</label>
+                  <p className="text-sm text-muted-foreground">{new Date(selectedDoc.excuse_date).toLocaleDateString()}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Document Type</label>
+                  <p className="text-sm text-muted-foreground">{DocumentTypeBadge({ type: selectedDoc.document_type })}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Document Name</label>
+                  <p className="text-sm text-muted-foreground">{selectedDoc.document_name}</p>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium">Reason</label>
+                <p className="text-sm text-muted-foreground mt-1">{selectedDoc.excuse_reason}</p>
+              </div>
+
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={() => viewDocument(selectedDoc.file_url, selectedDoc.document_name)}>
+                  <Eye className="h-3 w-3 mr-2" />
+                  View Document
+                </Button>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Decision</label>
+                <Select value={reviewStatus} onValueChange={(v) => setReviewStatus(v as "approved" | "rejected")}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="approved">Approve</SelectItem>
+                    <SelectItem value="rejected">Reject</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Review Notes (Optional)</label>
+                <Textarea
+                  placeholder="Add any comments about your decision..."
+                  value={reviewNotes}
+                  onChange={(e) => setReviewNotes(e.target.value)}
+                  className="min-h-24"
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReviewDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleReview} disabled={submitting}>
+              {submitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Submitting...
+                </>
+              ) : (
+                "Submit Review"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
 
   return (
     <div className="space-y-6">
