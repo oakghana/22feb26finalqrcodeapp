@@ -142,13 +142,28 @@ export async function GET(request: NextRequest) {
     const { data: attendanceRecords, error } = await query.order("check_in_time", { ascending: false }).range(startIndex, endIndex)
 
     if (error) {
-      console.error("[v0] Reports API - Attendance query error:", error)
-      return NextResponse.json({ error: "Failed to fetch attendance report" }, { status: 500 })
+      console.error("[v0] Reports API - Error fetching attendance records:", error)
+      return NextResponse.json({ success: false, error: error.message }, { status: 500 })
+    }
+
+    console.log("[v0] Reports API - Fetched", attendanceRecords?.length || 0, "attendance records")
+    if (attendanceRecords && attendanceRecords.length > 0) {
+      console.log("[v0] Reports API - Sample record:", {
+        id: attendanceRecords[0].id,
+        user_id: attendanceRecords[0].user_id,
+        check_in_location_id: attendanceRecords[0].check_in_location_id,
+        keys: Object.keys(attendanceRecords[0])
+      })
     }
 
     console.log("[v0] Reports API - Found", attendanceRecords.length, "attendance records")
 
     const userIds = [...new Set(attendanceRecords.map((record) => record.user_id))]
+
+    console.log("[v0] Reports API - Extracted user IDs:", userIds.length, "unique users from", attendanceRecords.length, "records")
+    if (userIds.length > 0) {
+      console.log("[v0] Reports API - Sample user IDs to query:", userIds.slice(0, 5))
+    }
 
     // Ensure we have a non-empty array to query
     let userProfiles: any[] = []
@@ -185,9 +200,11 @@ export async function GET(request: NextRequest) {
         console.error("[v0] Reports API - Error fetching user profiles:", profileError)
       }
       userProfiles = profiles || []
+      console.log("[v0] Reports API - Query returned", userProfiles.length, "matching profiles from", userIds.length, "user IDs")
+      if (userProfiles.length > 0) {
+        console.log("[v0] Reports API - Sample profile IDs:", userProfiles.slice(0, 3).map(p => p.id))
+      }
     }
-
-    console.log("[v0] Reports API - Fetched", userProfiles.length, "user profiles for", userIds.length, "unique user IDs")
 
     const userMap = new Map(userProfiles.map((user) => [user.id, user]) || [])
 
