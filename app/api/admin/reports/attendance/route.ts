@@ -146,107 +146,76 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: error.message }, { status: 500 })
     }
 
-    const userIds = [...new Set(attendanceRecords.map((record) => record.user_id))]
+    const userIds = new Set(attendanceRecords.map((record) => record.user_id))
 
-    // Fetch user profiles for the attendance records
+    // Use admin client to bypass RLS when fetching user_profiles
+    const adminClient = await createAdminClient()
+
+    // Fetch ALL user_profiles via admin client (no RLS, no .in() size limit)
     let userProfiles: any[] = []
-    if (userIds.length > 0) {
-      const { data: profiles, error: profileError } = await supabase
-        .from("user_profiles")
-        .select(`
-          id,
-          first_name,
-          last_name,
-          email,
-          employee_id,
-          department_id,
-          assigned_location_id
-        `)
-        .in("id", userIds)
-      
-      if (profileError) {
-        console.error("[v0] Reports API - Error fetching user profiles:", profileError)
+    const { data: allProfiles, error: profileError } = await adminClient
+      .from("user_profiles")
+      .select(`id, first_name, last_name, email, employee_id, department_id, assigned_location_id`)
+    if (profileError) {
+      console.error("[v0] Reports API - Error fetching user profiles:", profileError)
+    }
+    // Only keep profiles relevant to this batch of attendance records
+    userProfiles = (allProfiles || []).filter(p => userIds.has(p.id))
+
+    // Enrich profiles with department and location names
+    if (userProfiles.length > 0) {
+      const deptIds = [...new Set(userProfiles.map(p => p.department_id).filter(Boolean))]
+      const locIds  = [...new Set(userProfiles.map(p => p.assigned_location_id).filter(Boolean))]
+      const deptMap = new Map<string, any>()
+      const locMap  = new Map<string, any>()
+      if (deptIds.length > 0) {
+        const { data: depts } = await supabase.from("departments").select("id, name, code").in("id", deptIds)
+        depts?.forEach(d => deptMap.set(d.id, d))
       }
-      userProfiles = profiles || []
-      
-      // Fetch departments and locations for profiles
-      if (userProfiles.length > 0) {
-        const departmentIds = [...new Set(userProfiles.map(p => p.department_id).filter(Boolean))]
-        const locationIds = [...new Set(userProfiles.map(p => p.assigned_location_id).filter(Boolean))]
-        
-        let departmentMap = new Map()
-        let locationMap = new Map()
-        
-        if (departmentIds.length > 0) {
-          const { data: departments } = await supabase
-            .from("departments")
-            .select("id, name, code")
-            .in("id", departmentIds)
-          departments?.forEach(d => departmentMap.set(d.id, d))
-        }
-        
-        if (locationIds.length > 0) {
-          const { data: locations } = await supabase
-            .from("geofence_locations")
-            .select("id, name, address, district_id")
-            .in("id", locationIds)
-          locations?.forEach(l => locationMap.set(l.id, l))
-        }
-        
-        // Enrich profiles with department and location data
-        userProfiles = userProfiles.map(profile => ({
-          ...profile,
-          departments: profile.department_id ? departmentMap.get(profile.department_id) : null,
-          assigned_location: profile.assigned_location_id ? locationMap.get(profile.assigned_location_id) : null
-        }))
+      if (locIds.length > 0) {
+        const { data: locs } = await supabase.from("geofence_locations").select("id, name, address, district_id").in("id", locIds)
+        locs?.forEach(l => locMap.set(l.id, l))
       }
+      userProfiles = userProfiles.map(profile => ({
+        ...profile,
+        departments: profile.department_id ? deptMap.get(profile.department_id) : null,
+        assigned_location: profile.assigned_location_id ? locMap.get(profile.assigned_location_id) : null,
+      }))
     }
 
-    const userMap = new Map(userProfiles.map((user) => [user.id, user]) || [])
+    const userMap = new Map(userProfiles.map((u) => [u.id, u]))
 
-    // For user_ids without profiles, try to get user data from auth.users
-    const missingProfileIds = userIds.filter(id => !userMap.has(id))
-    let authUserMap = new Map<string, { 
-      email?: string | null,
-      first_name?: string,
-      last_name?: string,
-      employee_id?: string 
-    }>()
-    if (missingProfileIds.length > 0) {
+    // For records with no matching profile, fall back to auth.users (paginate all pages)
+    const missingIds = [...userIds].filter(id => !userMap.has(id))
+    const authUserMap = new Map<string, { email?: string | null, first_name: string, last_name: string, employee_id: string }>()
+    if (missingIds.length > 0) {
       try {
-        const adminClient = await createAdminClient()
-        const { data: authUsers } = await adminClient.auth.admin.listUsers()
-        if (authUsers?.users) {
-          authUsers.users.forEach((u) => {
-            if (missingProfileIds.includes(u.id)) {
-              // Try to extract name from user_metadata or email
-              const metadata = u.user_metadata || {}
-              let firstName = metadata.first_name || metadata.name?.split(' ')[0] || ''
-              let lastName = metadata.last_name || metadata.name?.split(' ').slice(1).join(' ') || ''
-              
-              // If no name in metadata, try to extract from email
-              if (!firstName && u.email) {
-                const emailName = u.email.split('@')[0]
-                // Convert email name like "john.doe" or "john_doe" to "John Doe"
-                const nameParts = emailName.split(/[._-]/).filter(Boolean)
-                if (nameParts.length >= 1) {
-                  firstName = nameParts[0].charAt(0).toUpperCase() + nameParts[0].slice(1).toLowerCase()
-                }
-                if (nameParts.length >= 2) {
-                  lastName = nameParts.slice(1).map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ')
-                }
+        let page = 1
+        const perPage = 1000
+        while (true) {
+          const { data: authPage } = await adminClient.auth.admin.listUsers({ page, perPage })
+          const users = authPage?.users || []
+          users.forEach((u) => {
+            if (missingIds.includes(u.id)) {
+              const meta = u.user_metadata || {}
+              let fn = meta.first_name || meta.name?.split(' ')[0] || ''
+              let ln = meta.last_name  || meta.name?.split(' ').slice(1).join(' ') || ''
+              if (!fn && u.email) {
+                const parts = u.email.split('@')[0].split(/[._-]/).filter(Boolean)
+                fn = parts[0] ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1).toLowerCase() : ''
+                ln = parts.slice(1).map((p: string) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ')
               }
-              
-              authUserMap.set(u.id, { 
+              authUserMap.set(u.id, {
                 email: u.email,
-                first_name: firstName || 'Unknown',
-                last_name: lastName || 'User',
-                employee_id: metadata.employee_id || u.id.slice(0, 8).toUpperCase()
+                first_name: fn || 'Unknown',
+                last_name: ln || 'User',
+                employee_id: meta.employee_id || u.id.slice(0, 8).toUpperCase(),
               })
             }
           })
+          if (users.length < perPage) break
+          page++
         }
-        console.log('[v0] Reports API - Fetched', authUserMap.size, 'auth users for', missingProfileIds.length, 'missing profiles')
       } catch (authErr) {
         console.error('[v0] Reports API - Failed to fetch auth users:', authErr)
       }

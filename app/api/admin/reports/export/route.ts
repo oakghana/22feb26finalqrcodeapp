@@ -58,67 +58,62 @@ export async function POST(request: NextRequest) {
       const userIds = [...new Set(attendanceRecords.map((record) => record.user_id))]
       const locationIds = [...new Set(attendanceRecords.map((record) => record.check_in_location_id).filter(Boolean))]
 
-      // Fetch user profiles
-      const { data: userProfiles } = await supabase
+      // Use admin client to bypass RLS for user_profiles (regular client blocked by RLS)
+      const adminClient = await createAdminClient()
+
+      // Fetch ALL user_profiles via admin client (no RLS, no .in() size limit)
+      const userIdSet = new Set(userIds)
+      const { data: allProfiles } = await adminClient
         .from("user_profiles")
         .select("id, first_name, last_name, employee_id, department_id")
-        .in("id", userIds)
+      const userProfiles = (allProfiles || []).filter(p => userIdSet.has(p.id))
 
-      // For missing user_ids, fetch from auth.users as fallback
-      const missingProfileIds = userIds.filter(id => !(userProfiles || []).find(p => p.id === id))
-      let authUserMap = new Map<string, {first_name: string, last_name: string, employee_id: string}>()
-      
+      // For missing user_ids, paginate through all auth.users as fallback
+      const missingProfileIds = userIds.filter(id => !userProfiles.find(p => p.id === id))
+      const authUserMap = new Map<string, {first_name: string, last_name: string, employee_id: string}>()
       if (missingProfileIds.length > 0) {
         try {
-          const adminClient = await createAdminClient()
-          const { data: authUsers } = await adminClient.auth.admin.listUsers()
-          
-          if (authUsers?.users) {
-            authUsers.users.forEach((u) => {
+          let page = 1
+          const perPage = 1000
+          while (true) {
+            const { data: authPage } = await adminClient.auth.admin.listUsers({ page, perPage })
+            const users = authPage?.users || []
+            users.forEach((u) => {
               if (missingProfileIds.includes(u.id)) {
-                const metadata = u.user_metadata || {}
-                let firstName = metadata.first_name || ''
-                let lastName = metadata.last_name || ''
-                
-                // If no name in metadata, try to extract from email
-                if (!firstName && u.email) {
-                  const emailName = u.email.split('@')[0]
-                  const nameParts = emailName.split(/[._-]/).filter(Boolean)
-                  if (nameParts.length >= 1) {
-                    firstName = nameParts[0].charAt(0).toUpperCase() + nameParts[0].slice(1).toLowerCase()
-                  }
-                  if (nameParts.length >= 2) {
-                    lastName = nameParts.slice(1).map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ')
-                  }
+                const meta = u.user_metadata || {}
+                let fn = meta.first_name || ''
+                let ln = meta.last_name || ''
+                if (!fn && u.email) {
+                  const parts = u.email.split('@')[0].split(/[._-]/).filter(Boolean)
+                  fn = parts[0] ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1).toLowerCase() : ''
+                  ln = parts.slice(1).map((p: string) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ')
                 }
-                
                 authUserMap.set(u.id, {
-                  first_name: firstName || 'Unknown',
-                  last_name: lastName || 'User',
-                  employee_id: metadata.employee_id || u.id.slice(0, 8).toUpperCase()
+                  first_name: fn || 'Unknown',
+                  last_name: ln || 'User',
+                  employee_id: meta.employee_id || u.id.slice(0, 8).toUpperCase(),
                 })
               }
             })
+            if (users.length < perPage) break
+            page++
           }
         } catch (authErr) {
           console.error('[v0] Export - Failed to fetch auth users:', authErr)
         }
       }
 
-      // Merge userProfiles with auth user data
+      // Merge profiles with auth fallback data
       const allUserProfiles = [
-        ...(userProfiles || []),
-        ...Array.from(authUserMap.entries()).map(([userId, authData]) => ({
-          id: userId,
-          first_name: authData.first_name,
-          last_name: authData.last_name,
-          employee_id: authData.employee_id,
-          department_id: null
+        ...userProfiles,
+        ...Array.from(authUserMap.entries()).map(([userId, d]) => ({
+          id: userId, first_name: d.first_name, last_name: d.last_name,
+          employee_id: d.employee_id, department_id: null
         }))
       ]
 
       // Fetch departments
-      const departmentIds = [...new Set(allUserProfiles?.map((profile) => profile.department_id).filter(Boolean) || [])]
+      const departmentIds = [...new Set(allUserProfiles.map(p => p.department_id).filter(Boolean))]
       const { data: departments } = await supabase.from("departments").select("id, name").in("id", departmentIds)
 
       // Fetch locations
@@ -127,9 +122,9 @@ export async function POST(request: NextRequest) {
         .select("id, name, address")
         .in("id", locationIds)
 
-      const userProfileMap = new Map(allUserProfiles?.map((profile) => [profile.id, profile]) || [])
-      const departmentMap = new Map(departments?.map((dept) => [dept.id, dept]) || [])
-      const locationMap = new Map(locations?.map((loc) => [loc.id, loc]) || [])
+      const userProfileMap = new Map(allUserProfiles.map((p) => [p.id, p]))
+      const departmentMap  = new Map(departments?.map((d) => [d.id, d]) || [])
+      const locationMap    = new Map(locations?.map((l) => [l.id, l]) || [])
 
       const exportData = attendanceRecords.map((record) => {
         const userProfile = userProfileMap.get(record.user_id)
