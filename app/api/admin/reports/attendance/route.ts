@@ -146,28 +146,24 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: error.message }, { status: 500 })
     }
 
-    console.log("[v0] Reports API - Fetched", attendanceRecords?.length || 0, "attendance records")
-    if (attendanceRecords && attendanceRecords.length > 0) {
-      console.log("[v0] Reports API - Sample record:", {
-        id: attendanceRecords[0].id,
-        user_id: attendanceRecords[0].user_id,
-        check_in_location_id: attendanceRecords[0].check_in_location_id,
-        keys: Object.keys(attendanceRecords[0])
-      })
-    }
-
     console.log("[v0] Reports API - Found", attendanceRecords.length, "attendance records")
 
     const userIds = [...new Set(attendanceRecords.map((record) => record.user_id))]
 
-    console.log("[v0] Reports API - Extracted user IDs:", userIds.length, "unique users from", attendanceRecords.length, "records")
-    if (userIds.length > 0) {
-      console.log("[v0] Reports API - Sample user IDs to query:", userIds.slice(0, 5))
-    }
+    console.log("[v0] Reports API - Extracted", userIds.length, "unique user IDs from", attendanceRecords.length, "records")
 
     // Ensure we have a non-empty array to query
     let userProfiles: any[] = []
     if (userIds.length > 0) {
+      // First, check if ANY user_profiles exist at all to debug
+      const { data: allProfiles, count: totalProfileCount } = await supabase
+        .from("user_profiles")
+        .select("id, employee_id, first_name, last_name", { count: "exact", head: false })
+        .limit(5)
+      
+      console.log("[v0] Reports API - Total user_profiles in database:", totalProfileCount, "sample:", allProfiles?.map(p => p.id) || [])
+      
+      // Now try the actual query with the user IDs
       const { data: profiles, error: profileError } = await supabase
         .from("user_profiles")
         .select(`
@@ -177,22 +173,7 @@ export async function GET(request: NextRequest) {
           email,
           employee_id,
           department_id,
-          assigned_location_id,
-          departments (
-            id,
-            name,
-            code
-          ),
-          assigned_location:geofence_locations!assigned_location_id (
-            id,
-            name,
-            address,
-            district_id,
-            districts (
-              id,
-              name
-            )
-          )
+          assigned_location_id
         `)
         .in("id", userIds)
       
@@ -200,9 +181,49 @@ export async function GET(request: NextRequest) {
         console.error("[v0] Reports API - Error fetching user profiles:", profileError)
       }
       userProfiles = profiles || []
-      console.log("[v0] Reports API - Query returned", userProfiles.length, "matching profiles from", userIds.length, "user IDs")
+      console.log("[v0] Reports API - Matched", userProfiles.length, "profiles for", userIds.length, "user IDs")
+      console.log("[v0] Reports API - Sample unmatched user IDs:", userIds.slice(0, 3))
+      
+      // If no matches, check if user_profiles table uses a different ID scheme
+      if (userProfiles.length === 0 && userIds.length > 0) {
+        console.warn("[v0] Reports API - NO MATCHES! Checking if user_profiles uses different ID scheme...")
+        const { data: profilesByEmployee } = await supabase
+          .from("user_profiles")
+          .select("id, employee_id, first_name, last_name")
+          .limit(5)
+        console.log("[v0] Reports API - Sample user_profiles data:", profilesByEmployee?.map(p => ({ id: p.id, employee_id: p.employee_id })))
+      }
+      
+      // Now separately fetch departments and locations if needed
       if (userProfiles.length > 0) {
-        console.log("[v0] Reports API - Sample profile IDs:", userProfiles.slice(0, 3).map(p => p.id))
+        const departmentIds = [...new Set(userProfiles.map(p => p.department_id).filter(Boolean))]
+        const locationIds = [...new Set(userProfiles.map(p => p.assigned_location_id).filter(Boolean))]
+        
+        let departmentMap = new Map()
+        let locationMap = new Map()
+        
+        if (departmentIds.length > 0) {
+          const { data: departments } = await supabase
+            .from("departments")
+            .select("id, name, code")
+            .in("id", departmentIds)
+          departments?.forEach(d => departmentMap.set(d.id, d))
+        }
+        
+        if (locationIds.length > 0) {
+          const { data: locations } = await supabase
+            .from("geofence_locations")
+            .select("id, name, address, district_id")
+            .in("id", locationIds)
+          locations?.forEach(l => locationMap.set(l.id, l))
+        }
+        
+        // Enrich profiles with department and location data
+        userProfiles = userProfiles.map(profile => ({
+          ...profile,
+          departments: profile.department_id ? departmentMap.get(profile.department_id) : null,
+          assigned_location: profile.assigned_location_id ? locationMap.get(profile.assigned_location_id) : null
+        }))
       }
     }
 
