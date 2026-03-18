@@ -142,68 +142,79 @@ export async function GET(request: NextRequest) {
     const { data: attendanceRecords, error } = await query.order("check_in_time", { ascending: false }).range(startIndex, endIndex)
 
     if (error) {
-      console.error("[v0] Reports API - Attendance query error:", error)
-      return NextResponse.json({ error: "Failed to fetch attendance report" }, { status: 500 })
+      console.error("[v0] Reports API - Error fetching attendance records:", error)
+      return NextResponse.json({ success: false, error: error.message }, { status: 500 })
     }
 
-    console.log("[v0] Reports API - Found", attendanceRecords.length, "attendance records")
+    const userIds = new Set(attendanceRecords.map((record) => record.user_id))
 
-    const userIds = [...new Set(attendanceRecords.map((record) => record.user_id))]
+    // Use admin client to bypass RLS when fetching user_profiles
+    const adminClient = await createAdminClient()
 
-    // Ensure we have a non-empty array to query
+    // Fetch ALL user_profiles via admin client (no RLS, no .in() size limit)
     let userProfiles: any[] = []
-    if (userIds.length > 0) {
-      const { data: profiles, error: profileError } = await supabase
-        .from("user_profiles")
-        .select(`
-          id,
-          first_name,
-          last_name,
-          email,
-          employee_id,
-          department_id,
-          assigned_location_id,
-          departments (
-            id,
-            name,
-            code
-          ),
-          assigned_location:geofence_locations!assigned_location_id (
-            id,
-            name,
-            address,
-            district_id,
-            districts (
-              id,
-              name
-            )
-          )
-        `)
-        .in("id", userIds)
-      
-      if (profileError) {
-        console.error("[v0] Reports API - Error fetching user profiles:", profileError)
+    const { data: allProfiles, error: profileError } = await adminClient
+      .from("user_profiles")
+      .select(`id, first_name, last_name, email, employee_id, department_id, assigned_location_id`)
+    if (profileError) {
+      console.error("[v0] Reports API - Error fetching user profiles:", profileError)
+    }
+    // Only keep profiles relevant to this batch of attendance records
+    userProfiles = (allProfiles || []).filter(p => userIds.has(p.id))
+
+    // Enrich profiles with department and location names
+    if (userProfiles.length > 0) {
+      const deptIds = [...new Set(userProfiles.map(p => p.department_id).filter(Boolean))]
+      const locIds  = [...new Set(userProfiles.map(p => p.assigned_location_id).filter(Boolean))]
+      const deptMap = new Map<string, any>()
+      const locMap  = new Map<string, any>()
+      if (deptIds.length > 0) {
+        const { data: depts } = await supabase.from("departments").select("id, name, code").in("id", deptIds)
+        depts?.forEach(d => deptMap.set(d.id, d))
       }
-      userProfiles = profiles || []
+      if (locIds.length > 0) {
+        const { data: locs } = await supabase.from("geofence_locations").select("id, name, address, district_id").in("id", locIds)
+        locs?.forEach(l => locMap.set(l.id, l))
+      }
+      userProfiles = userProfiles.map(profile => ({
+        ...profile,
+        departments: profile.department_id ? deptMap.get(profile.department_id) : null,
+        assigned_location: profile.assigned_location_id ? locMap.get(profile.assigned_location_id) : null,
+      }))
     }
 
-    console.log("[v0] Reports API - Fetched", userProfiles.length, "user profiles for", userIds.length, "unique user IDs")
+    const userMap = new Map(userProfiles.map((u) => [u.id, u]))
 
-    const userMap = new Map(userProfiles.map((user) => [user.id, user]) || [])
-
-    // For user_ids without profiles, try to get email from auth.users
-    const missingProfileIds = userIds.filter(id => !userMap.has(id))
-    let authUserMap = new Map<string, { email?: string | null }>()
-    if (missingProfileIds.length > 0) {
+    // For records with no matching profile, fall back to auth.users (paginate all pages)
+    const missingIds = [...userIds].filter(id => !userMap.has(id))
+    const authUserMap = new Map<string, { email?: string | null, first_name: string, last_name: string, employee_id: string }>()
+    if (missingIds.length > 0) {
       try {
-        const adminClient = await createAdminClient()
-        const { data: authUsers } = await adminClient.auth.admin.listUsers()
-        if (authUsers?.users) {
-          authUsers.users.forEach((u) => {
-            if (missingProfileIds.includes(u.id)) {
-              authUserMap.set(u.id, { email: u.email })
+        let page = 1
+        const perPage = 1000
+        while (true) {
+          const { data: authPage } = await adminClient.auth.admin.listUsers({ page, perPage })
+          const users = authPage?.users || []
+          users.forEach((u) => {
+            if (missingIds.includes(u.id)) {
+              const meta = u.user_metadata || {}
+              let fn = meta.first_name || meta.name?.split(' ')[0] || ''
+              let ln = meta.last_name  || meta.name?.split(' ').slice(1).join(' ') || ''
+              if (!fn && u.email) {
+                const parts = u.email.split('@')[0].split(/[._-]/).filter(Boolean)
+                fn = parts[0] ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1).toLowerCase() : ''
+                ln = parts.slice(1).map((p: string) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ')
+              }
+              authUserMap.set(u.id, {
+                email: u.email,
+                first_name: fn || 'Unknown',
+                last_name: ln || 'User',
+                employee_id: meta.employee_id || u.id.slice(0, 8).toUpperCase(),
+              })
             }
           })
+          if (users.length < perPage) break
+          page++
         }
       } catch (authErr) {
         console.error('[v0] Reports API - Failed to fetch auth users:', authErr)
@@ -256,19 +267,17 @@ export async function GET(request: NextRequest) {
         record.check_out_location_id &&
         record.check_out_location_id !== userProfile.assigned_location_id
 
-      // If no profile, try to get email from auth.users
+      // If no profile, use enriched auth user data as fallback
       const authUser = authUserMap.get(record.user_id)
-      const enrichedProfile = userProfile || (authUser ? { email: authUser.email } : null)
-      
-      // Log if we have a record without profile
-      if (!userProfile && !authUser) {
-        console.warn('[v0] Reports API - Record has no profile or auth data:', {
-          recordId: record.id,
-          userId: record.user_id,
-          hasLateness: !!record.lateness_reason,
-          hasEarlyCheckout: !!record.early_checkout_reason
-        })
-      }
+      const enrichedProfile = userProfile || (authUser ? { 
+        id: record.user_id,
+        email: authUser.email,
+        first_name: authUser.first_name,
+        last_name: authUser.last_name,
+        employee_id: authUser.employee_id,
+        departments: null,
+        assigned_location: null
+      } : null)
 
       return {
         ...record,
