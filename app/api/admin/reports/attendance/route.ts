@@ -146,24 +146,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: error.message }, { status: 500 })
     }
 
-    console.log("[v0] Reports API - Found", attendanceRecords.length, "attendance records")
-
     const userIds = [...new Set(attendanceRecords.map((record) => record.user_id))]
 
-    console.log("[v0] Reports API - Extracted", userIds.length, "unique user IDs from", attendanceRecords.length, "records")
-
-    // Ensure we have a non-empty array to query
+    // Fetch user profiles for the attendance records
     let userProfiles: any[] = []
     if (userIds.length > 0) {
-      // First, check if ANY user_profiles exist at all to debug
-      const { data: allProfiles, count: totalProfileCount } = await supabase
-        .from("user_profiles")
-        .select("id, employee_id, first_name, last_name", { count: "exact", head: false })
-        .limit(5)
-      
-      console.log("[v0] Reports API - Total user_profiles in database:", totalProfileCount, "sample:", allProfiles?.map(p => p.id) || [])
-      
-      // Now try the actual query with the user IDs
       const { data: profiles, error: profileError } = await supabase
         .from("user_profiles")
         .select(`
@@ -181,20 +168,8 @@ export async function GET(request: NextRequest) {
         console.error("[v0] Reports API - Error fetching user profiles:", profileError)
       }
       userProfiles = profiles || []
-      console.log("[v0] Reports API - Matched", userProfiles.length, "profiles for", userIds.length, "user IDs")
-      console.log("[v0] Reports API - Sample unmatched user IDs:", userIds.slice(0, 3))
       
-      // If no matches, check if user_profiles table uses a different ID scheme
-      if (userProfiles.length === 0 && userIds.length > 0) {
-        console.warn("[v0] Reports API - NO MATCHES! Checking if user_profiles uses different ID scheme...")
-        const { data: profilesByEmployee } = await supabase
-          .from("user_profiles")
-          .select("id, employee_id, first_name, last_name")
-          .limit(5)
-        console.log("[v0] Reports API - Sample user_profiles data:", profilesByEmployee?.map(p => ({ id: p.id, employee_id: p.employee_id })))
-      }
-      
-      // Now separately fetch departments and locations if needed
+      // Fetch departments and locations for profiles
       if (userProfiles.length > 0) {
         const departmentIds = [...new Set(userProfiles.map(p => p.department_id).filter(Boolean))]
         const locationIds = [...new Set(userProfiles.map(p => p.assigned_location_id).filter(Boolean))]
@@ -229,9 +204,14 @@ export async function GET(request: NextRequest) {
 
     const userMap = new Map(userProfiles.map((user) => [user.id, user]) || [])
 
-    // For user_ids without profiles, try to get email from auth.users
+    // For user_ids without profiles, try to get user data from auth.users
     const missingProfileIds = userIds.filter(id => !userMap.has(id))
-    let authUserMap = new Map<string, { email?: string | null }>()
+    let authUserMap = new Map<string, { 
+      email?: string | null,
+      first_name?: string,
+      last_name?: string,
+      employee_id?: string 
+    }>()
     if (missingProfileIds.length > 0) {
       try {
         const adminClient = await createAdminClient()
@@ -239,10 +219,34 @@ export async function GET(request: NextRequest) {
         if (authUsers?.users) {
           authUsers.users.forEach((u) => {
             if (missingProfileIds.includes(u.id)) {
-              authUserMap.set(u.id, { email: u.email })
+              // Try to extract name from user_metadata or email
+              const metadata = u.user_metadata || {}
+              let firstName = metadata.first_name || metadata.name?.split(' ')[0] || ''
+              let lastName = metadata.last_name || metadata.name?.split(' ').slice(1).join(' ') || ''
+              
+              // If no name in metadata, try to extract from email
+              if (!firstName && u.email) {
+                const emailName = u.email.split('@')[0]
+                // Convert email name like "john.doe" or "john_doe" to "John Doe"
+                const nameParts = emailName.split(/[._-]/).filter(Boolean)
+                if (nameParts.length >= 1) {
+                  firstName = nameParts[0].charAt(0).toUpperCase() + nameParts[0].slice(1).toLowerCase()
+                }
+                if (nameParts.length >= 2) {
+                  lastName = nameParts.slice(1).map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ')
+                }
+              }
+              
+              authUserMap.set(u.id, { 
+                email: u.email,
+                first_name: firstName || 'Unknown',
+                last_name: lastName || 'User',
+                employee_id: metadata.employee_id || u.id.slice(0, 8).toUpperCase()
+              })
             }
           })
         }
+        console.log('[v0] Reports API - Fetched', authUserMap.size, 'auth users for', missingProfileIds.length, 'missing profiles')
       } catch (authErr) {
         console.error('[v0] Reports API - Failed to fetch auth users:', authErr)
       }
@@ -294,19 +298,17 @@ export async function GET(request: NextRequest) {
         record.check_out_location_id &&
         record.check_out_location_id !== userProfile.assigned_location_id
 
-      // If no profile, try to get email from auth.users
+      // If no profile, use enriched auth user data as fallback
       const authUser = authUserMap.get(record.user_id)
-      const enrichedProfile = userProfile || (authUser ? { email: authUser.email } : null)
-      
-      // Log if we have a record without profile
-      if (!userProfile && !authUser) {
-        console.warn('[v0] Reports API - Record has no profile or auth data:', {
-          recordId: record.id,
-          userId: record.user_id,
-          hasLateness: !!record.lateness_reason,
-          hasEarlyCheckout: !!record.early_checkout_reason
-        })
-      }
+      const enrichedProfile = userProfile || (authUser ? { 
+        id: record.user_id,
+        email: authUser.email,
+        first_name: authUser.first_name,
+        last_name: authUser.last_name,
+        employee_id: authUser.employee_id,
+        departments: null,
+        assigned_location: null
+      } : null)
 
       return {
         ...record,
