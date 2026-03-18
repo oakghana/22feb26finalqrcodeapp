@@ -71,8 +71,9 @@ export async function GET(request: NextRequest) {
             )
           `)
         .eq("user_id", user.id)
-        // exclude deprecated checkout requests
-        .neq("request_type", "checkout")
+        // exclude deprecated checkout requests but keep NULL request_type rows
+        // (PostgREST .neq() excludes NULLs, so we must explicitly include them)
+        .or("request_type.neq.checkout,request_type.is.null")
         .order("created_at", { ascending: false })
 
       // Apply status filter if not "all"
@@ -127,8 +128,9 @@ export async function GET(request: NextRequest) {
           assigned_location_id
         )
       `)
-      // don't return checkout requests
-      .neq("request_type", "checkout")
+      // exclude deprecated checkout requests but keep NULL request_type rows
+      // (PostgREST .neq() excludes NULLs, so we must explicitly include them)
+      .or("request_type.neq.checkout,request_type.is.null")
       .order("created_at", { ascending: false })
 
     // if non-admin manager, restrict to own department or assigned location

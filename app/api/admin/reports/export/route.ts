@@ -61,12 +61,24 @@ export async function POST(request: NextRequest) {
       // Use admin client to bypass RLS for user_profiles (regular client blocked by RLS)
       const adminClient = await createAdminClient()
 
-      // Fetch ALL user_profiles via admin client (no RLS, no .in() size limit)
+      // Paginate through ALL user_profiles in chunks of 1000 to avoid Supabase row limit
       const userIdSet = new Set(userIds)
-      const { data: allProfiles } = await adminClient
-        .from("user_profiles")
-        .select("id, first_name, last_name, employee_id, department_id")
-      const userProfiles = (allProfiles || []).filter(p => userIdSet.has(p.id))
+      let allProfiles: any[] = []
+      {
+        const CHUNK = 1000
+        let from = 0
+        while (true) {
+          const { data: chunk, error: chunkErr } = await adminClient
+            .from("user_profiles")
+            .select("id, first_name, last_name, employee_id, department_id")
+            .range(from, from + CHUNK - 1)
+          if (chunkErr || !chunk || chunk.length === 0) break
+          allProfiles.push(...chunk)
+          if (chunk.length < CHUNK) break
+          from += CHUNK
+        }
+      }
+      const userProfiles = allProfiles.filter(p => userIdSet.has(p.id))
 
       // For missing user_ids, paginate through all auth.users as fallback
       const missingProfileIds = userIds.filter(id => !userProfiles.find(p => p.id === id))

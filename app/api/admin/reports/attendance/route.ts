@@ -151,16 +151,28 @@ export async function GET(request: NextRequest) {
     // Use admin client to bypass RLS when fetching user_profiles
     const adminClient = await createAdminClient()
 
-    // Fetch ALL user_profiles via admin client (no RLS, no .in() size limit)
+    // Paginate through ALL user_profiles in chunks of 1000 to avoid Supabase row limit
     let userProfiles: any[] = []
-    const { data: allProfiles, error: profileError } = await adminClient
-      .from("user_profiles")
-      .select(`id, first_name, last_name, email, employee_id, department_id, assigned_location_id`)
-    if (profileError) {
-      console.error("[v0] Reports API - Error fetching user profiles:", profileError)
+    {
+      const CHUNK = 1000
+      let from = 0
+      while (true) {
+        const { data: chunk, error: chunkErr } = await adminClient
+          .from("user_profiles")
+          .select(`id, first_name, last_name, email, employee_id, department_id, assigned_location_id`)
+          .range(from, from + CHUNK - 1)
+        if (chunkErr) {
+          console.error("[v0] Reports API - Error fetching user profiles chunk:", chunkErr)
+          break
+        }
+        if (!chunk || chunk.length === 0) break
+        userProfiles.push(...chunk)
+        if (chunk.length < CHUNK) break
+        from += CHUNK
+      }
     }
     // Only keep profiles relevant to this batch of attendance records
-    userProfiles = (allProfiles || []).filter(p => userIds.has(p.id))
+    userProfiles = userProfiles.filter(p => userIds.has(p.id))
 
     // Enrich profiles with department and location names
     if (userProfiles.length > 0) {
