@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import * as XLSX from "xlsx"
 import jsPDF from "jspdf"
 import "jspdf-autotable"
@@ -64,8 +64,61 @@ export async function POST(request: NextRequest) {
         .select("id, first_name, last_name, employee_id, department_id")
         .in("id", userIds)
 
+      // For missing user_ids, fetch from auth.users as fallback
+      const missingProfileIds = userIds.filter(id => !(userProfiles || []).find(p => p.id === id))
+      let authUserMap = new Map<string, {first_name: string, last_name: string, employee_id: string}>()
+      
+      if (missingProfileIds.length > 0) {
+        try {
+          const adminClient = await createAdminClient()
+          const { data: authUsers } = await adminClient.auth.admin.listUsers()
+          
+          if (authUsers?.users) {
+            authUsers.users.forEach((u) => {
+              if (missingProfileIds.includes(u.id)) {
+                const metadata = u.user_metadata || {}
+                let firstName = metadata.first_name || ''
+                let lastName = metadata.last_name || ''
+                
+                // If no name in metadata, try to extract from email
+                if (!firstName && u.email) {
+                  const emailName = u.email.split('@')[0]
+                  const nameParts = emailName.split(/[._-]/).filter(Boolean)
+                  if (nameParts.length >= 1) {
+                    firstName = nameParts[0].charAt(0).toUpperCase() + nameParts[0].slice(1).toLowerCase()
+                  }
+                  if (nameParts.length >= 2) {
+                    lastName = nameParts.slice(1).map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ')
+                  }
+                }
+                
+                authUserMap.set(u.id, {
+                  first_name: firstName || 'Unknown',
+                  last_name: lastName || 'User',
+                  employee_id: metadata.employee_id || u.id.slice(0, 8).toUpperCase()
+                })
+              }
+            })
+          }
+        } catch (authErr) {
+          console.error('[v0] Export - Failed to fetch auth users:', authErr)
+        }
+      }
+
+      // Merge userProfiles with auth user data
+      const allUserProfiles = [
+        ...(userProfiles || []),
+        ...Array.from(authUserMap.entries()).map(([userId, authData]) => ({
+          id: userId,
+          first_name: authData.first_name,
+          last_name: authData.last_name,
+          employee_id: authData.employee_id,
+          department_id: null
+        }))
+      ]
+
       // Fetch departments
-      const departmentIds = [...new Set(userProfiles?.map((profile) => profile.department_id).filter(Boolean) || [])]
+      const departmentIds = [...new Set(allUserProfiles?.map((profile) => profile.department_id).filter(Boolean) || [])]
       const { data: departments } = await supabase.from("departments").select("id, name").in("id", departmentIds)
 
       // Fetch locations
@@ -74,7 +127,7 @@ export async function POST(request: NextRequest) {
         .select("id, name, address")
         .in("id", locationIds)
 
-      const userProfileMap = new Map(userProfiles?.map((profile) => [profile.id, profile]) || [])
+      const userProfileMap = new Map(allUserProfiles?.map((profile) => [profile.id, profile]) || [])
       const departmentMap = new Map(departments?.map((dept) => [dept.id, dept]) || [])
       const locationMap = new Map(locations?.map((loc) => [loc.id, loc]) || [])
 
