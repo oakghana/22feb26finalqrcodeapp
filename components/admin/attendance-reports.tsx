@@ -1534,6 +1534,9 @@ export function AttendanceReports() {
                         <div>
                           <p className="text-sm font-medium">{displayUserLabel(record)} <span className="text-xs text-gray-500">({record.user_profiles?.employee_id || record.user_id?.slice(0,8) || 'N/A'})</span></p>
                           <p className="text-xs text-gray-500">{new Date(record.check_in_time).toLocaleDateString()} • {new Date(record.check_in_time).toLocaleTimeString()}</p>
+                          {record.user_profiles?.departments?.name && (
+                            <Badge variant="outline" className="text-xs mt-1">{record.user_profiles.departments.name}</Badge>
+                          )}
                         </div>
                         <div className="text-right">
                           <p className="text-sm font-semibold">{record.work_hours ? `${record.work_hours.toFixed(1)}h` : '-'}</p>
