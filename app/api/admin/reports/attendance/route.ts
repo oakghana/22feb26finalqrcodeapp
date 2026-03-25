@@ -162,26 +162,74 @@ export async function GET(request: NextRequest) {
     // Only keep profiles relevant to this batch of attendance records
     userProfiles = (allProfiles || []).filter(p => userIds.has(p.id))
 
-    // Enrich profiles with department and location names
-    if (userProfiles.length > 0) {
-      const deptIds = [...new Set(userProfiles.map(p => p.department_id).filter(Boolean))]
-      const locIds  = [...new Set(userProfiles.map(p => p.assigned_location_id).filter(Boolean))]
-      const deptMap = new Map<string, any>()
-      const locMap  = new Map<string, any>()
-      if (deptIds.length > 0) {
-        const { data: depts } = await supabase.from("departments").select("id, name, code").in("id", deptIds)
+  // Enrich profiles with department and location names
+  // Use admin client to bypass RLS for department/location lookups
+  if (userProfiles.length > 0) {
+    const deptIds = [...new Set(userProfiles.map(p => p.department_id).filter(Boolean))]
+    const locIds  = [...new Set(userProfiles.map(p => p.assigned_location_id).filter(Boolean))]
+    const deptMap = new Map<string, any>()
+    const locMap  = new Map<string, any>()
+    
+    if (deptIds.length > 0) {
+      const { data: depts, error: deptError } = await adminClient.from("departments").select("id, name, code").in("id", deptIds)
+      if (!deptError) {
         depts?.forEach(d => deptMap.set(d.id, d))
       }
-      if (locIds.length > 0) {
-        const { data: locs } = await supabase.from("geofence_locations").select("id, name, address, district_id").in("id", locIds)
+    }
+    if (locIds.length > 0) {
+      const { data: locs, error: locError } = await adminClient.from("geofence_locations").select("id, name, address, district_id").in("id", locIds)
+      if (!locError) {
         locs?.forEach(l => locMap.set(l.id, l))
       }
-      userProfiles = userProfiles.map(profile => ({
-        ...profile,
-        departments: profile.department_id ? deptMap.get(profile.department_id) : null,
-        assigned_location: profile.assigned_location_id ? locMap.get(profile.assigned_location_id) : null,
-      }))
     }
+    
+    userProfiles = userProfiles.map(profile => {
+      const dept = profile.department_id ? deptMap.get(profile.department_id) : null
+      const loc = profile.assigned_location_id ? locMap.get(profile.assigned_location_id) : null
+      
+      return {
+        ...profile,
+        departments: dept,
+        assigned_location: loc,
+      }
+    })
+  }
+  
+  // For profiles without department_id, try to fetch from a fresh query to ensure we have latest data
+  const profilesWithoutDept = userProfiles.filter(p => !p.department_id)
+  if (profilesWithoutDept.length > 0) {
+    const missingDeptUserIds = profilesWithoutDept.map(p => p.id)
+    
+    // Re-fetch these profiles directly with department join to get latest data
+    const { data: freshProfiles, error: freshError } = await adminClient
+      .from("user_profiles")
+      .select(`
+        id,
+        department_id,
+        assigned_location_id,
+        departments:department_id(id, name, code),
+        assigned_location:geofence_locations!assigned_location_id(id, name, address, district_id)
+      `)
+      .in("id", missingDeptUserIds)
+    
+    if (!freshError && freshProfiles && freshProfiles.length > 0) {
+      // Update the userProfiles with fresh department data
+      const freshMap = new Map(freshProfiles.map((fp: any) => [fp.id, fp]))
+      userProfiles = userProfiles.map(profile => {
+        const fresh = freshMap.get(profile.id)
+        if (fresh && (fresh.departments || fresh.assigned_location)) {
+          return {
+            ...profile,
+            department_id: fresh.department_id || profile.department_id,
+            departments: fresh.departments || profile.departments,
+            assigned_location_id: fresh.assigned_location_id || profile.assigned_location_id,
+            assigned_location: fresh.assigned_location || profile.assigned_location,
+          }
+        }
+        return profile
+      })
+    }
+  }
 
     const userMap = new Map(userProfiles.map((u) => [u.id, u]))
 
