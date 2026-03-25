@@ -1,10 +1,17 @@
 import { createClient } from "@/lib/supabase/server"
+import { createClient as createAdminClient } from "@supabase/supabase-js"
 import { type NextRequest, NextResponse } from "next/server"
 
 export async function GET(request: NextRequest) {
   try {
-    console.log("[v0] Users API: Starting user fetch")
     const supabase = await createClient()
+
+    // Admin client uses service role key to bypass RLS for full user list
+    const adminClient = createAdminClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    )
 
     // Get authenticated user
     const {
@@ -13,11 +20,8 @@ export async function GET(request: NextRequest) {
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      console.log("[v0] Users API: Authentication failed", authError)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
-
-    console.log("[v0] Users API: User authenticated", user.id)
 
     const { data: profile, error: profileError } = await supabase
       .from("user_profiles")
@@ -25,28 +29,11 @@ export async function GET(request: NextRequest) {
       .eq("id", user.id)
       .single()
 
-    console.log("[v0] Users API: Profile query result:", { profile, profileError })
-
-    if (profileError) {
-      console.error("[v0] Users API: Profile fetch error:", profileError)
-      return NextResponse.json(
-        {
-          error: "Failed to fetch user profile",
-          details: profileError.message,
-        },
-        { status: 500 },
-      )
+    if (profileError || !profile) {
+      return NextResponse.json({ error: "Failed to fetch user profile" }, { status: 500 })
     }
-
-    if (!profile) {
-      console.log("[v0] Users API: No profile found for user")
-      return NextResponse.json({ error: "User profile not found" }, { status: 404 })
-    }
-
-    console.log("[v0] Users API: User profile:", profile)
 
     if (!["admin", "department_head", "it-admin"].includes(profile.role)) {
-      console.log("[v0] Users API: Insufficient permissions - user role:", profile.role)
       return NextResponse.json(
         {
           error: "Insufficient permissions",
@@ -57,9 +44,8 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    console.log("[v0] Users API: Permission check passed", profile.role)
-
-    const { data: users, error } = await supabase
+    // Use admin client to bypass RLS and fetch ALL active users
+    const { data: users, error } = await adminClient
       .from("user_profiles")
       .select(`
         id,
@@ -96,23 +82,12 @@ export async function GET(request: NextRequest) {
     let filteredUsers = users || []
     if (profile.role === "it-admin") {
       filteredUsers = users?.filter((u) => u.role !== "admin" && u.role !== "it-admin") || []
-      console.log("[v0] Users API: IT-Admin filtering applied, showing", filteredUsers.length, "users")
     }
-
-    console.log("[v0] Users API: Successfully fetched", filteredUsers.length, "users")
 
     return NextResponse.json(
       {
         success: true,
         users: filteredUsers,
-        debug: {
-          currentUser: {
-            id: user.id,
-            role: profile.role,
-            name: `${profile.first_name} ${profile.last_name}`,
-          },
-          totalUsers: filteredUsers.length,
-        },
       },
       {
         headers: {
