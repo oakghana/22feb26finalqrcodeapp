@@ -83,6 +83,10 @@ export function StaffManagement() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false)
+  const [isSyncDialogOpen, setIsSyncDialogOpen] = useState(false)
+  const [usersWithoutDept, setUsersWithoutDept] = useState<{id: string, email: string, first_name: string, last_name: string, employee_id: string}[]>([])
+  const [syncUpdates, setSyncUpdates] = useState<{[userId: string]: string}>({})
+  const [syncLoading, setSyncLoading] = useState(false)
   const { showSuccess, showError, showWarning, showFieldError } = useNotifications()
 
   const [newStaff, setNewStaff] = useState({
@@ -216,6 +220,61 @@ export function StaffManagement() {
       }
     } catch (err) {
       console.error('[v0] Failed to fetch supabase config:', err)
+    }
+  }
+
+  // Fetch users without department for sync feature
+  const fetchUsersWithoutDepartment = async () => {
+    try {
+      setSyncLoading(true)
+      const response = await fetch('/api/admin/staff/sync-departments')
+      const result = await response.json()
+      if (result.success) {
+        setUsersWithoutDept(result.users_without_department || [])
+        setSyncUpdates({})
+      } else {
+        showError(result.error || "Failed to fetch users", "Sync Error")
+      }
+    } catch (error) {
+      console.error("[v0] Failed to fetch users without department:", error)
+      showError("Failed to fetch users without department")
+    } finally {
+      setSyncLoading(false)
+    }
+  }
+
+  // Bulk update departments
+  const handleBulkSyncDepartments = async () => {
+    const updates = Object.entries(syncUpdates)
+      .filter(([_, deptId]) => deptId && deptId !== "none")
+      .map(([userId, department_id]) => ({ user_id: userId, department_id }))
+
+    if (updates.length === 0) {
+      showError("No departments selected to update")
+      return
+    }
+
+    try {
+      setSyncLoading(true)
+      const response = await fetch('/api/admin/staff/sync-departments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates })
+      })
+      const result = await response.json()
+      if (result.success) {
+        showSuccess(`Updated ${result.successCount} users successfully`, "Sync Complete")
+        setIsSyncDialogOpen(false)
+        fetchStaff()
+        fetchUsersWithoutDepartment()
+      } else {
+        showError(result.error || "Failed to sync departments")
+      }
+    } catch (error) {
+      console.error("[v0] Bulk sync error:", error)
+      showError("Failed to sync departments")
+    } finally {
+      setSyncLoading(false)
     }
   }
 
@@ -557,7 +616,98 @@ export function StaffManagement() {
             </div>
 
             {/* Action Buttons */}
-            <div className="flex gap-3">
+            <div className="flex gap-3 flex-wrap">
+              {/* Sync Departments Dialog */}
+              <Dialog open={isSyncDialogOpen} onOpenChange={(open) => {
+                setIsSyncDialogOpen(open)
+                if (open) fetchUsersWithoutDepartment()
+              }}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="shadow-sm hover:shadow-md transition-shadow bg-transparent">
+                    <Building2 className="mr-2 h-4 w-4" />
+                    Sync Departments
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
+                  <DialogHeader>
+                    <DialogTitle className="font-heading">Sync Missing Departments</DialogTitle>
+                    <DialogDescription>
+                      Assign departments to staff members who are missing department assignments.
+                      This will fix "N/A" showing in reports.
+                    </DialogDescription>
+                  </DialogHeader>
+                  {syncLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                    </div>
+                  ) : usersWithoutDept.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Building2 className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                      <p>All staff members have departments assigned.</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="text-sm text-muted-foreground mb-2">
+                        Found {usersWithoutDept.length} staff without department assignment
+                      </div>
+                      <div className="flex-1 overflow-y-auto border rounded-md">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Employee</TableHead>
+                              <TableHead>Employee ID</TableHead>
+                              <TableHead>Assign Department</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {usersWithoutDept.map((user) => (
+                              <TableRow key={user.id}>
+                                <TableCell>
+                                  <div>
+                                    <p className="font-medium">{user.first_name} {user.last_name}</p>
+                                    <p className="text-xs text-muted-foreground">{user.email}</p>
+                                  </div>
+                                </TableCell>
+                                <TableCell>{user.employee_id || '-'}</TableCell>
+                                <TableCell>
+                                  <Select
+                                    value={syncUpdates[user.id] || "none"}
+                                    onValueChange={(value) => setSyncUpdates(prev => ({...prev, [user.id]: value}))}
+                                  >
+                                    <SelectTrigger className="w-48">
+                                      <SelectValue placeholder="Select Department" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="none">-- Select --</SelectItem>
+                                      {departments.map((dept) => (
+                                        <SelectItem key={dept.id} value={dept.id}>
+                                          {dept.name}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                      <DialogFooter className="gap-2 mt-4">
+                        <Button variant="outline" onClick={() => setIsSyncDialogOpen(false)}>
+                          Cancel
+                        </Button>
+                        <Button 
+                          onClick={handleBulkSyncDepartments} 
+                          disabled={Object.values(syncUpdates).filter(v => v && v !== "none").length === 0}
+                        >
+                          Update {Object.values(syncUpdates).filter(v => v && v !== "none").length} Users
+                        </Button>
+                      </DialogFooter>
+                    </>
+                  )}
+                </DialogContent>
+              </Dialog>
+
               <Dialog open={isPasswordDialogOpen} onOpenChange={setIsPasswordDialogOpen}>
                 <DialogTrigger asChild>
                   <Button variant="outline" className="shadow-sm hover:shadow-md transition-shadow bg-transparent">

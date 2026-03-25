@@ -170,23 +170,15 @@ export async function GET(request: NextRequest) {
     const deptMap = new Map<string, any>()
     const locMap  = new Map<string, any>()
     
-    console.log("[v0] Reports API - Enriching profiles. Department IDs found:", deptIds.length, "Location IDs found:", locIds.length)
-    
     if (deptIds.length > 0) {
       const { data: depts, error: deptError } = await adminClient.from("departments").select("id, name, code").in("id", deptIds)
-      if (deptError) {
-        console.error("[v0] Reports API - Error fetching departments:", deptError)
-      } else {
-        console.log("[v0] Reports API - Fetched", depts?.length || 0, "departments")
+      if (!deptError) {
         depts?.forEach(d => deptMap.set(d.id, d))
       }
     }
     if (locIds.length > 0) {
       const { data: locs, error: locError } = await adminClient.from("geofence_locations").select("id, name, address, district_id").in("id", locIds)
-      if (locError) {
-        console.error("[v0] Reports API - Error fetching locations:", locError)
-      } else {
-        console.log("[v0] Reports API - Fetched", locs?.length || 0, "locations")
+      if (!locError) {
         locs?.forEach(l => locMap.set(l.id, l))
       }
     }
@@ -194,11 +186,6 @@ export async function GET(request: NextRequest) {
     userProfiles = userProfiles.map(profile => {
       const dept = profile.department_id ? deptMap.get(profile.department_id) : null
       const loc = profile.assigned_location_id ? locMap.get(profile.assigned_location_id) : null
-      
-      // Log if department_id exists but department wasn't found
-      if (profile.department_id && !dept) {
-        console.warn("[v0] Reports API - Department not found for profile", profile.id, "dept_id:", profile.department_id)
-      }
       
       return {
         ...profile,
@@ -211,7 +198,6 @@ export async function GET(request: NextRequest) {
   // For profiles without department_id, try to fetch from a fresh query to ensure we have latest data
   const profilesWithoutDept = userProfiles.filter(p => !p.department_id)
   if (profilesWithoutDept.length > 0) {
-    console.log("[v0] Reports API -", profilesWithoutDept.length, "profiles missing department_id, attempting fresh fetch")
     const missingDeptUserIds = profilesWithoutDept.map(p => p.id)
     
     // Re-fetch these profiles directly with department join to get latest data
@@ -226,11 +212,7 @@ export async function GET(request: NextRequest) {
       `)
       .in("id", missingDeptUserIds)
     
-    if (freshError) {
-      console.error("[v0] Reports API - Error re-fetching profiles with departments:", freshError)
-    } else if (freshProfiles && freshProfiles.length > 0) {
-      console.log("[v0] Reports API - Re-fetched", freshProfiles.length, "profiles with department joins")
-      
+    if (!freshError && freshProfiles && freshProfiles.length > 0) {
       // Update the userProfiles with fresh department data
       const freshMap = new Map(freshProfiles.map((fp: any) => [fp.id, fp]))
       userProfiles = userProfiles.map(profile => {
