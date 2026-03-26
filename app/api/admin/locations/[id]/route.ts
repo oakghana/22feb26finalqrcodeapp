@@ -71,8 +71,17 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       const coordinatesChanged =
         Math.abs(currentLocation.latitude - newLat) > 0.00001 || Math.abs(currentLocation.longitude - newLng) > 0.00001
       
-      if (coordinatesChanged || is_active !== undefined || radius_meters !== currentLocation.radius_meters || address !== currentLocation.address) {
-        console.log("[v0] Restricted it-admin attempted to change protected fields")
+      const isActiveChanged = is_active !== currentLocation.is_active
+      const radiusChanged = radius_meters !== currentLocation.radius_meters
+      const addressChanged = address !== currentLocation.address
+      
+      if (coordinatesChanged || isActiveChanged || radiusChanged || addressChanged) {
+        console.log("[v0] Restricted it-admin attempted to change protected fields", {
+          coordinatesChanged,
+          isActiveChanged,
+          radiusChanged,
+          addressChanged,
+        })
         return NextResponse.json(
           { error: "IT-Admin users can only edit location names" },
           { status: 403 }
