@@ -68,8 +68,8 @@ export function LocationManagement({ userRole }: LocationManagementProps) {
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
   const [retryCount, setRetryCount] = useState(0)
 
-  // Check if current user role is restricted admin
-  const isRestrictedAdmin = userRole === "admin"
+  // Check if current user role is restricted IT-Admin
+  const isRestrictedAdmin = userRole === "it-admin"
 
   const [newLocation, setNewLocation] = useState({
     name: "",

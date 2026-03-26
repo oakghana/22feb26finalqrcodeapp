@@ -51,15 +51,15 @@ export async function POST(request: Request) {
 
     const { data: profile } = await supabase.from("user_profiles").select("role").eq("id", user.id).single()
 
-    // Prevent restricted admins from adding locations
-    if (profile?.role === "admin") {
+    // Prevent it-admin from adding locations
+    if (profile?.role === "it-admin") {
       return NextResponse.json(
         { error: "You do not have permission to add new locations" },
         { status: 403 }
       )
     }
 
-    if (!profile || !["admin", "it-admin", "department_head"].includes(profile.role)) {
+    if (!profile || !["admin", "department_head"].includes(profile.role)) {
       return NextResponse.json(
         { error: "Insufficient permissions to add locations" },
         { status: 403 }

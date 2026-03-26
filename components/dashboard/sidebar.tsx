@@ -135,7 +135,7 @@ const navigationItems = [
     title: "Locations",
     href: "/dashboard/locations",
     icon: MapPin,
-    roles: ["admin"],
+    roles: ["admin", "it-admin"],
     category: "admin",
   },
   {

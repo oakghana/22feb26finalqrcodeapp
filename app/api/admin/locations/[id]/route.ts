@@ -35,7 +35,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     // Check if user has admin or department_head role
     const { data: profile } = await supabase.from("user_profiles").select("role").eq("id", user.id).single()
 
-    if (!profile || !["admin", "department_head"].includes(profile.role)) {
+    if (!profile || !["admin", "department_head", "it-admin"].includes(profile.role)) {
       console.log("[v0] Location update - insufficient permissions")
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
     }
@@ -43,8 +43,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const body = await request.json()
     console.log("[v0] Location update data:", body)
 
-    // Check if user is restricted admin - only allow name changes
-    const isRestrictedAdmin = profile.role === "admin"
+    // Check if user is it-admin - only allow name changes
+    const isRestrictedAdmin = profile.role === "it-admin"
 
     const { name, address, latitude, longitude, radius_meters, is_active } = body
 
@@ -72,9 +72,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         Math.abs(currentLocation.latitude - newLat) > 0.00001 || Math.abs(currentLocation.longitude - newLng) > 0.00001
       
       if (coordinatesChanged || is_active !== undefined || radius_meters !== currentLocation.radius_meters || address !== currentLocation.address) {
-        console.log("[v0] Restricted admin attempted to change protected fields")
+        console.log("[v0] Restricted it-admin attempted to change protected fields")
         return NextResponse.json(
-          { error: "Restricted admins can only edit location names" },
+          { error: "IT-Admin users can only edit location names" },
           { status: 403 }
         )
       }
