@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { type NextRequest, NextResponse } from "next/server"
 
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -21,134 +21,142 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     const supabase = await createClient()
 
-    // Get authenticated user and check admin role
     const {
       data: { user },
       error: authError,
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      console.log("[v0] Location update - unauthorized")
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Check if user has admin or department_head role
     const { data: profile } = await supabase.from("user_profiles").select("role").eq("id", user.id).single()
 
-    if (!profile || !["admin", "department_head"].includes(profile.role)) {
-      console.log("[v0] Location update - insufficient permissions")
+    if (!profile || !["admin", "department_head", "it-admin"].includes(profile.role)) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
     }
 
     const body = await request.json()
+    console.log("[v0] User role:", profile.role)
     console.log("[v0] Location update data:", body)
 
-    const { name, address, latitude, longitude, radius_meters, is_active } = body
+    const isITAdmin = profile.role === "it-admin"
 
-    const newLat = Number(latitude)
-    const newLng = Number(longitude)
-
-    if (isNaN(newLat) || isNaN(newLng)) {
-      return NextResponse.json({ error: "Invalid coordinates provided" }, { status: 400 })
-    }
-
-      const { data: currentLocation, error: fetchError } = await supabase
-        .from("geofence_locations")
-        .select("id, name, latitude, longitude")
-        .eq("id", id)
-        .single()
+    // Fetch current location
+    const { data: currentLocation, error: fetchError } = await supabase
+      .from("geofence_locations")
+      .select("*")
+      .eq("id", id)
+      .single()
 
     if (fetchError || !currentLocation) {
-      console.error("[v0] Location not found:", fetchError)
+      console.error("[v0] Location not found")
       return NextResponse.json({ error: "Location not found" }, { status: 404 })
     }
 
-    const coordsChanged =
-      Math.abs(currentLocation.latitude - newLat) > 0.00001 || Math.abs(currentLocation.longitude - newLng) > 0.00001
+    // IT-Admin: Only update name — use admin client to bypass RLS
+    if (isITAdmin) {
+      const newName = body.name?.trim()
 
-    let conflicts: any[] = []
+      if (!newName) {
+        return NextResponse.json({ error: "Location name cannot be empty" }, { status: 400 })
+      }
 
-    if (coordsChanged) {
-      const { data: otherLocations, error: conflictError } = await supabase
+      // createAdminClient uses the service role key and bypasses RLS
+      const adminSupabase = await createAdminClient()
+
+      const { data: updateResult, error: updateError } = await adminSupabase
         .from("geofence_locations")
-        .select("id, name, latitude, longitude")
-          .neq("id", id)
-        .eq("is_active", true) // Only check active locations
+        .update({ name: newName })
+        .eq("id", id)
+        .select()
 
-      if (conflictError) {
-        console.error("[v0] Error checking for conflicts:", conflictError)
-        return NextResponse.json({ error: "Failed to validate coordinates" }, { status: 500 })
+      if (updateError) {
+        console.error("[v0] IT-Admin update error:", updateError)
+        return NextResponse.json({ error: updateError.message || "Failed to update location name" }, { status: 500 })
       }
 
-      // Check if new coordinates are too close to any other location (within 50 meters)
-      conflicts = otherLocations?.filter((loc) => {
-        const distance = calculateDistance(newLat, newLng, loc.latitude, loc.longitude)
-        return distance < 50 // Too close if within 50 meters
+      if (!updateResult || updateResult.length === 0) {
+        console.error("[v0] IT-Admin update returned no rows")
+        return NextResponse.json({ error: "Location not found or could not be updated" }, { status: 404 })
+      }
+
+      // Try to insert audit log but don't block if it fails
+      try {
+        await adminSupabase.from("audit_logs").insert({
+          user_id: user.id,
+          action: "update_location_name",
+          table_name: "geofence_locations",
+          record_id: id,
+          old_values: { name: currentLocation.name },
+          new_values: { name: newName },
+          ip_address: request.headers.get("x-forwarded-for") || null,
+        })
+      } catch (auditError) {
+        console.warn("[v0] Audit log insert failed (non-blocking):", auditError)
+      }
+
+      return NextResponse.json({
+        success: true,
+        data: updateResult[0],
+        message: "Location name updated successfully",
       })
-
-      if (conflicts && conflicts.length > 0) {
-        const conflictNames = conflicts.map((c) => c.name).join(", ")
-        console.log("[v0] Coordinate conflict warning (non-blocking):", conflictNames)
-        // Continue with the update anyway - conflict is just a warning
-      }
-
-      console.log("[v0] Coordinates changed for location:", currentLocation.name)
     }
 
-    const { data: updatedLocation, error } = await supabase
-      .from("geofence_locations")
-      .update({
-        name,
-        address,
-        latitude: newLat,
-        longitude: newLng,
-        radius_meters: Number(radius_meters),
-        is_active: is_active ?? true,
-        check_in_start_time: body.check_in_start_time || null,
-        check_out_end_time: body.check_out_end_time || null,
-        require_early_checkout_reason: body.require_early_checkout_reason ?? true,
-        working_hours_description: body.working_hours_description || null,
-        updated_at: new Date().toISOString(),
-      })
-        .eq("id", id)
-      .select()
-      .single()
+    // Full admin/department_head update
+    const updateData: any = {}
+    
+    if (body.name !== undefined) updateData.name = body.name
+    if (body.address !== undefined) updateData.address = body.address
+    if (body.latitude !== undefined) updateData.latitude = Number(body.latitude)
+    if (body.longitude !== undefined) updateData.longitude = Number(body.longitude)
+    if (body.radius_meters !== undefined) updateData.radius_meters = Number(body.radius_meters)
+    if (body.is_active !== undefined) updateData.is_active = body.is_active
+    if (body.check_in_start_time !== undefined) updateData.check_in_start_time = body.check_in_start_time
+    if (body.check_out_end_time !== undefined) updateData.check_out_end_time = body.check_out_end_time
+    if (body.require_early_checkout_reason !== undefined) updateData.require_early_checkout_reason = body.require_early_checkout_reason
+    if (body.working_hours_description !== undefined) updateData.working_hours_description = body.working_hours_description
 
-    if (error) {
-      console.error("[v0] Location update error:", error)
+    const { data: updateResult, error: updateError } = await supabase
+      .from("geofence_locations")
+      .update(updateData)
+      .eq("id", id)
+      .select()
+
+    if (updateError) {
+      console.error("[v0] Update error:", updateError)
       return NextResponse.json({ error: "Failed to update location" }, { status: 500 })
     }
 
-    console.log("[v0] Location updated successfully:", updatedLocation.name)
+    if (!updateResult || updateResult.length === 0) {
+      console.error("[v0] Update returned no rows - possible RLS issue")
+      return NextResponse.json({ error: "Failed to update location - permission denied" }, { status: 403 })
+    }
 
-    const conflictWarning =
-      coordsChanged && conflicts && conflicts.length > 0
-        ? `Note: This location is within 50m of: ${conflicts.map((c) => c.name).join(", ")}. This may cause check-in conflicts.`
-        : null
+    console.log("[v0] Location updated successfully")
 
-    // Log the action
-    await supabase.from("audit_logs").insert({
-      user_id: user.id,
-      action: "update_location",
-      table_name: "geofence_locations",
+    // Try to insert audit log but don't block if it fails
+    try {
+      await supabase.from("audit_logs").insert({
+        user_id: user.id,
+        action: "update_location",
+        table_name: "geofence_locations",
         record_id: id,
-      old_values: {
-        name: currentLocation.name,
-        latitude: currentLocation.latitude,
-        longitude: currentLocation.longitude,
-      },
-      new_values: { name, address, latitude: newLat, longitude: newLng, radius_meters, is_active },
-      ip_address: request.headers.get("x-forwarded-for") || null,
-    })
+        old_values: currentLocation,
+        new_values: updateData,
+        ip_address: request.headers.get("x-forwarded-for") || null,
+      })
+    } catch (auditError) {
+      console.warn("[v0] Audit log insert failed (non-blocking):", auditError)
+    }
 
     return NextResponse.json({
       success: true,
-      data: updatedLocation,
-      message: `Location "${updatedLocation.name}" updated successfully. Only this location was modified.`,
-      warning: conflictWarning,
+      data: updateResult[0],
+      message: "Location updated successfully",
     })
   } catch (error) {
-    console.error("[v0] Location update API error:", error)
+    console.error("[v0] API error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

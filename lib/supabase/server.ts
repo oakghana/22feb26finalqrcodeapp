@@ -22,11 +22,6 @@ export async function createClient() {
     process.env.SUPABASE_ANON_KEY ||
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZndGFqdHF4Z2N6aGpib2F0dm9sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY5NzUyNDgsImV4cCI6MjA3MjU1MTI0OH0.EuuTCRC-rDoz_WHl4pwpV6_fEqrqcgGroa4nTjAEn1k"
 
-  // Debug: Log available cookies
-  const allCookies = cookieStore.getAll()
-  const authCookies = allCookies.filter(c => c.name.includes('sb') || c.name.includes('auth'))
-  console.log("[v0] Supabase Server Client - Available auth cookies:", authCookies.map(c => c.name))
-
   return createSupabaseServerClient(supabaseUrl, supabaseKey, {
     cookies: {
       getAll() {
