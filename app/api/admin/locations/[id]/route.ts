@@ -42,6 +42,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     const body = await request.json()
     console.log("[v0] Location update data:", body)
+    console.log("[v0] User role:", profile.role)
 
     // Check if user is it-admin - only allow name changes
     const isRestrictedAdmin = profile.role === "it-admin"
@@ -66,27 +67,54 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: "Location not found" }, { status: 404 })
     }
 
-    // If restricted admin, validate that only name is being changed
+    // If restricted admin, only allow name updates
     if (isRestrictedAdmin) {
-      const coordinatesChanged =
-        Math.abs(currentLocation.latitude - newLat) > 0.00001 || Math.abs(currentLocation.longitude - newLng) > 0.00001
-      
-      const isActiveChanged = is_active !== currentLocation.is_active
-      const radiusChanged = radius_meters !== currentLocation.radius_meters
-      const addressChanged = address !== currentLocation.address
-      
-      if (coordinatesChanged || isActiveChanged || radiusChanged || addressChanged) {
-        console.log("[v0] Restricted it-admin attempted to change protected fields", {
-          coordinatesChanged,
-          isActiveChanged,
-          radiusChanged,
-          addressChanged,
+      console.log("[v0] IT-Admin update - only name field will be updated")
+      const { data: updatedLocation, error } = await supabase
+        .from("geofence_locations")
+        .update({
+          name,
+          updated_at: new Date().toISOString(),
         })
-        return NextResponse.json(
-          { error: "IT-Admin users can only edit location names" },
-          { status: 403 }
-        )
+        .eq("id", id)
+        .select()
+        .single()
+
+      if (error) {
+        console.error("[v0] Location name update error:", error)
+        return NextResponse.json({ error: "Failed to update location name" }, { status: 500 })
       }
+
+      console.log("[v0] Location name updated successfully:", updatedLocation.name)
+
+      // Log the action
+      await supabase.from("audit_logs").insert({
+        user_id: user.id,
+        action: "update_location",
+        table_name: "geofence_locations",
+        record_id: id,
+        old_values: {
+          name: currentLocation.name,
+        },
+        new_values: { name },
+        ip_address: request.headers.get("x-forwarded-for") || null,
+      })
+
+      return NextResponse.json({
+        success: true,
+        data: updatedLocation,
+        message: `Location name updated to "${updatedLocation.name}" successfully.`,
+      })
+    }
+
+    // For admin and department_head roles - full update allowed
+    const { name, address, latitude, longitude, radius_meters, is_active } = body
+
+    const newLat = Number(latitude)
+    const newLng = Number(longitude)
+
+    if (isNaN(newLat) || isNaN(newLng)) {
+      return NextResponse.json({ error: "Invalid coordinates provided" }, { status: 400 })
     }
 
     const coordsChanged =
