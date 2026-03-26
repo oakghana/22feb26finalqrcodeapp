@@ -47,22 +47,23 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     // Check if user is it-admin - only allow name changes
     const isRestrictedAdmin = profile.role === "it-admin"
 
-    const { name, address, latitude, longitude, radius_meters, is_active } = body
-
-      const { data: currentLocation, error: fetchError } = await supabase
-        .from("geofence_locations")
-        .select("id, name, latitude, longitude, radius_meters, address, is_active")
-        .eq("id", id)
-        .single()
+    // Fetch current location
+    const { data: currentLocation, error: fetchError } = await supabase
+      .from("geofence_locations")
+      .select("id, name, latitude, longitude, radius_meters, address, is_active")
+      .eq("id", id)
+      .single()
 
     if (fetchError || !currentLocation) {
       console.error("[v0] Location not found:", fetchError)
       return NextResponse.json({ error: "Location not found" }, { status: 404 })
     }
 
-    // If restricted admin, only allow name updates
+    // If restricted admin (it-admin), only allow name updates
     if (isRestrictedAdmin) {
       console.log("[v0] IT-Admin update - only name field will be updated")
+      
+      const { name } = body
       
       // Trim and validate name
       const trimmedName = name?.trim()
@@ -111,15 +112,17 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     // For admin and department_head roles - full update allowed
-    const newLat2 = Number(latitude)
-    const newLng2 = Number(longitude)
+    const { name, address, latitude, longitude, radius_meters, is_active } = body
 
-    if (isNaN(newLat2) || isNaN(newLng2)) {
+    const newLat = Number(latitude)
+    const newLng = Number(longitude)
+
+    if (isNaN(newLat) || isNaN(newLng)) {
       return NextResponse.json({ error: "Invalid coordinates provided" }, { status: 400 })
     }
 
     const coordsChanged =
-      Math.abs(currentLocation.latitude - newLat2) > 0.00001 || Math.abs(currentLocation.longitude - newLng2) > 0.00001
+      Math.abs(currentLocation.latitude - newLat) > 0.00001 || Math.abs(currentLocation.longitude - newLng) > 0.00001
 
     let conflicts: any[] = []
 
@@ -127,7 +130,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       const { data: otherLocations, error: conflictError } = await supabase
         .from("geofence_locations")
         .select("id, name, latitude, longitude")
-          .neq("id", id)
+        .neq("id", id)
         .eq("is_active", true) // Only check active locations
 
       if (conflictError) {
@@ -137,7 +140,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
       // Check if new coordinates are too close to any other location (within 50 meters)
       conflicts = otherLocations?.filter((loc) => {
-        const distance = calculateDistance(newLat2, newLng2, loc.latitude, loc.longitude)
+        const distance = calculateDistance(newLat, newLng, loc.latitude, loc.longitude)
         return distance < 50 // Too close if within 50 meters
       })
 
@@ -155,8 +158,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       .update({
         name,
         address,
-        latitude: newLat2,
-        longitude: newLng2,
+        latitude: newLat,
+        longitude: newLng,
         radius_meters: Number(radius_meters),
         is_active: is_active ?? true,
         check_in_start_time: body.check_in_start_time || null,
@@ -165,7 +168,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         working_hours_description: body.working_hours_description || null,
         updated_at: new Date().toISOString(),
       })
-        .eq("id", id)
+      .eq("id", id)
       .select()
       .single()
 
@@ -193,7 +196,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           latitude: currentLocation.latitude,
           longitude: currentLocation.longitude,
         },
-        new_values: { name, address, latitude: newLat2, longitude: newLng2, radius_meters, is_active },
+        new_values: { name, address, latitude: newLat, longitude: newLng, radius_meters, is_active },
         ip_address: request.headers.get("x-forwarded-for") || null,
       })
     } catch (auditError) {
