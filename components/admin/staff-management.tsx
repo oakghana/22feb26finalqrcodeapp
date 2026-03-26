@@ -106,7 +106,7 @@ export function StaffManagement() {
 
   const fetchStaff = useCallback(async () => {
     try {
-      console.log("[v0] Fetching staff with filters:", { searchTerm, selectedDepartment, selectedRole })
+      console.log("[v0] Fetching staff with filters:", { searchTerm, selectedDepartment, selectedRole, page })
       const params = new URLSearchParams()
       if (searchTerm) params.append("search", searchTerm)
       if (selectedDepartment !== "all") params.append("department", selectedDepartment)
@@ -132,24 +132,24 @@ export function StaffManagement() {
     } finally {
       setLoading(false)
     }
-  }, [searchTerm, selectedDepartment, selectedRole])
+  }, [searchTerm, selectedDepartment, selectedRole, page, limit])
 
   useEffect(() => {
+    setLoading(true)
     fetchStaff()
     fetchDepartments()
     fetchLocations()
     fetchCurrentUserRole()
-  }, [fetchStaff, page])
+  }, [page, selectedDepartment, selectedRole, fetchStaff])
 
   useEffect(() => {
     const debounceTimer = setTimeout(() => {
       // when search term changes, reset to first page
       setPage(1)
-      fetchStaff()
     }, 300) // Wait 300ms after user stops typing
 
     return () => clearTimeout(debounceTimer)
-  }, [searchTerm, fetchStaff])
+  }, [searchTerm])
 
   const fetchDepartments = async () => {
     try {
