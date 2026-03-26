@@ -57,7 +57,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
       const { data: currentLocation, error: fetchError } = await supabase
         .from("geofence_locations")
-        .select("id, name, latitude, longitude")
+        .select("id, name, latitude, longitude, radius_meters, address, is_active")
         .eq("id", id)
         .single()
 

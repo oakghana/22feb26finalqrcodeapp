@@ -298,21 +298,33 @@ export function LocationManagement({ userRole }: LocationManagementProps) {
     setError(null)
 
     try {
+      // For IT-Admin, only send the name field to the API
+      const updatePayload = isRestrictedAdmin 
+        ? {
+            name: editingLocation.name,
+            address: editingLocation.address,
+            latitude: editingLocation.latitude,
+            longitude: editingLocation.longitude,
+            radius_meters: editingLocation.radius_meters,
+            is_active: editingLocation.is_active,
+          }
+        : {
+            name: editingLocation.name,
+            address: editingLocation.address,
+            latitude: editingLocation.latitude,
+            longitude: editingLocation.longitude,
+            radius_meters: editingLocation.radius_meters,
+            is_active: editingLocation.is_active,
+            check_in_start_time: editingLocation.check_in_start_time || null,
+            check_out_end_time: editingLocation.check_out_end_time || null,
+            require_early_checkout_reason: editingLocation.require_early_checkout_reason ?? true,
+            working_hours_description: editingLocation.working_hours_description || null,
+          }
+
       const response = await fetch(`/api/admin/locations/${editingLocation.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: editingLocation.name,
-          address: editingLocation.address,
-          latitude: editingLocation.latitude,
-          longitude: editingLocation.longitude,
-          radius_meters: editingLocation.radius_meters,
-          is_active: editingLocation.is_active,
-          check_in_start_time: editingLocation.check_in_start_time || null,
-          check_out_end_time: editingLocation.check_out_end_time || null,
-          require_early_checkout_reason: editingLocation.require_early_checkout_reason ?? true,
-          working_hours_description: editingLocation.working_hours_description || null,
-        }),
+        body: JSON.stringify(updatePayload),
       })
 
       if (response.status === 409) {
