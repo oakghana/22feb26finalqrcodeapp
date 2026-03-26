@@ -49,13 +49,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     const { name, address, latitude, longitude, radius_meters, is_active } = body
 
-    const newLat = Number(latitude)
-    const newLng = Number(longitude)
-
-    if (isNaN(newLat) || isNaN(newLng)) {
-      return NextResponse.json({ error: "Invalid coordinates provided" }, { status: 400 })
-    }
-
       const { data: currentLocation, error: fetchError } = await supabase
         .from("geofence_locations")
         .select("id, name, latitude, longitude, radius_meters, address, is_active")
@@ -108,17 +101,15 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     // For admin and department_head roles - full update allowed
-    const { name, address, latitude, longitude, radius_meters, is_active } = body
+    const newLat2 = Number(latitude)
+    const newLng2 = Number(longitude)
 
-    const newLat = Number(latitude)
-    const newLng = Number(longitude)
-
-    if (isNaN(newLat) || isNaN(newLng)) {
+    if (isNaN(newLat2) || isNaN(newLng2)) {
       return NextResponse.json({ error: "Invalid coordinates provided" }, { status: 400 })
     }
 
     const coordsChanged =
-      Math.abs(currentLocation.latitude - newLat) > 0.00001 || Math.abs(currentLocation.longitude - newLng) > 0.00001
+      Math.abs(currentLocation.latitude - newLat2) > 0.00001 || Math.abs(currentLocation.longitude - newLng2) > 0.00001
 
     let conflicts: any[] = []
 
@@ -136,7 +127,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
       // Check if new coordinates are too close to any other location (within 50 meters)
       conflicts = otherLocations?.filter((loc) => {
-        const distance = calculateDistance(newLat, newLng, loc.latitude, loc.longitude)
+        const distance = calculateDistance(newLat2, newLng2, loc.latitude, loc.longitude)
         return distance < 50 // Too close if within 50 meters
       })
 
@@ -154,8 +145,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       .update({
         name,
         address,
-        latitude: newLat,
-        longitude: newLng,
+        latitude: newLat2,
+        longitude: newLng2,
         radius_meters: Number(radius_meters),
         is_active: is_active ?? true,
         check_in_start_time: body.check_in_start_time || null,
@@ -191,7 +182,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         latitude: currentLocation.latitude,
         longitude: currentLocation.longitude,
       },
-      new_values: { name, address, latitude: newLat, longitude: newLng, radius_meters, is_active },
+      new_values: { name, address, latitude: newLat2, longitude: newLng2, radius_meters, is_active },
       ip_address: request.headers.get("x-forwarded-for") || null,
     })
 
