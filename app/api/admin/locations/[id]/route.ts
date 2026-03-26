@@ -80,18 +80,22 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
       console.log("[v0] Location name updated successfully:", updatedLocation.name)
 
-      // Log the action
-      await supabase.from("audit_logs").insert({
-        user_id: user.id,
-        action: "update_location",
-        table_name: "geofence_locations",
-        record_id: id,
-        old_values: {
-          name: currentLocation.name,
-        },
-        new_values: { name },
-        ip_address: request.headers.get("x-forwarded-for") || null,
-      })
+      // Log the action (wrapped in try-catch to prevent blocking the update)
+      try {
+        await supabase.from("audit_logs").insert({
+          user_id: user.id,
+          action: "update_location",
+          table_name: "geofence_locations",
+          record_id: id,
+          old_values: {
+            name: currentLocation.name,
+          },
+          new_values: { name },
+          ip_address: request.headers.get("x-forwarded-for") || null,
+        })
+      } catch (auditError) {
+        console.warn("[v0] Audit log failed (non-blocking):", auditError)
+      }
 
       return NextResponse.json({
         success: true,
@@ -171,20 +175,24 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         ? `Note: This location is within 50m of: ${conflicts.map((c) => c.name).join(", ")}. This may cause check-in conflicts.`
         : null
 
-    // Log the action
-    await supabase.from("audit_logs").insert({
-      user_id: user.id,
-      action: "update_location",
-      table_name: "geofence_locations",
+    // Log the action (wrapped in try-catch to prevent blocking the update)
+    try {
+      await supabase.from("audit_logs").insert({
+        user_id: user.id,
+        action: "update_location",
+        table_name: "geofence_locations",
         record_id: id,
-      old_values: {
-        name: currentLocation.name,
-        latitude: currentLocation.latitude,
-        longitude: currentLocation.longitude,
-      },
-      new_values: { name, address, latitude: newLat2, longitude: newLng2, radius_meters, is_active },
-      ip_address: request.headers.get("x-forwarded-for") || null,
-    })
+        old_values: {
+          name: currentLocation.name,
+          latitude: currentLocation.latitude,
+          longitude: currentLocation.longitude,
+        },
+        new_values: { name, address, latitude: newLat2, longitude: newLng2, radius_meters, is_active },
+        ip_address: request.headers.get("x-forwarded-for") || null,
+      })
+    } catch (auditError) {
+      console.warn("[v0] Audit log failed (non-blocking):", auditError)
+    }
 
     return NextResponse.json({
       success: true,
