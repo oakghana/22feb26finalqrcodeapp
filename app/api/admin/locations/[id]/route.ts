@@ -63,11 +63,17 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     // If restricted admin, only allow name updates
     if (isRestrictedAdmin) {
       console.log("[v0] IT-Admin update - only name field will be updated")
+      
+      // Trim and validate name
+      const trimmedName = name?.trim()
+      if (!trimmedName) {
+        return NextResponse.json({ error: "Location name cannot be empty" }, { status: 400 })
+      }
+
       const { data: updatedLocation, error } = await supabase
         .from("geofence_locations")
         .update({
-          name,
-          updated_at: new Date().toISOString(),
+          name: trimmedName,
         })
         .eq("id", id)
         .select()
@@ -75,7 +81,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
       if (error) {
         console.error("[v0] Location name update error:", error)
-        return NextResponse.json({ error: "Failed to update location name" }, { status: 500 })
+        return NextResponse.json({ error: error.message || "Failed to update location name" }, { status: 500 })
       }
 
       console.log("[v0] Location name updated successfully:", updatedLocation.name)
@@ -90,7 +96,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           old_values: {
             name: currentLocation.name,
           },
-          new_values: { name },
+          new_values: { name: trimmedName },
           ip_address: request.headers.get("x-forwarded-for") || null,
         })
       } catch (auditError) {
@@ -100,7 +106,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({
         success: true,
         data: updatedLocation,
-        message: `Location name updated to "${updatedLocation.name}" successfully.`,
+        message: `Location name updated successfully.`,
       })
     }
 
