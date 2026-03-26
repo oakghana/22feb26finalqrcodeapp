@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { type NextRequest, NextResponse } from "next/server"
 
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -54,36 +54,36 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: "Location not found" }, { status: 404 })
     }
 
-    // IT-Admin: Only update name
+    // IT-Admin: Only update name — use admin client to bypass RLS
     if (isITAdmin) {
-      console.log("[v0] IT-Admin updating location name only")
       const newName = body.name?.trim()
-      
+
       if (!newName) {
         return NextResponse.json({ error: "Location name cannot be empty" }, { status: 400 })
       }
 
-      const { data: updateResult, error: updateError } = await supabase
+      // createAdminClient uses the service role key and bypasses RLS
+      const adminSupabase = await createAdminClient()
+
+      const { data: updateResult, error: updateError } = await adminSupabase
         .from("geofence_locations")
         .update({ name: newName })
         .eq("id", id)
         .select()
 
       if (updateError) {
-        console.error("[v0] Update error:", updateError)
-        return NextResponse.json({ error: "Failed to update location name" }, { status: 500 })
+        console.error("[v0] IT-Admin update error:", updateError)
+        return NextResponse.json({ error: updateError.message || "Failed to update location name" }, { status: 500 })
       }
 
       if (!updateResult || updateResult.length === 0) {
-        console.error("[v0] Update returned no rows - possible RLS issue")
-        return NextResponse.json({ error: "Failed to update location name - permission denied" }, { status: 403 })
+        console.error("[v0] IT-Admin update returned no rows")
+        return NextResponse.json({ error: "Location not found or could not be updated" }, { status: 404 })
       }
-
-      console.log("[v0] Location name updated successfully")
 
       // Try to insert audit log but don't block if it fails
       try {
-        await supabase.from("audit_logs").insert({
+        await adminSupabase.from("audit_logs").insert({
           user_id: user.id,
           action: "update_location_name",
           table_name: "geofence_locations",
