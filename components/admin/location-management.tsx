@@ -50,7 +50,11 @@ interface GeofenceLocation {
   working_hours_description?: string | null
 }
 
-export function LocationManagement() {
+interface LocationManagementProps {
+  userRole?: string
+}
+
+export function LocationManagement({ userRole }: LocationManagementProps) {
   const [locations, setLocations] = useState<GeofenceLocation[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -63,6 +67,9 @@ export function LocationManagement() {
   const [locationPermission, setLocationPermission] = useState<"granted" | "denied" | "prompt" | null>(null)
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
   const [retryCount, setRetryCount] = useState(0)
+
+  // Check if current user role is restricted admin
+  const isRestrictedAdmin = userRole === "admin"
 
   const [newLocation, setNewLocation] = useState({
     name: "",
@@ -258,6 +265,35 @@ export function LocationManagement() {
       return
     }
 
+    // For restricted admins, only allow name changes
+    if (isRestrictedAdmin) {
+      // Find the original location to compare
+      const originalLocation = locations.find(loc => loc.id === editingLocation.id)
+      if (!originalLocation) return
+
+      const nameChanged = originalLocation.name !== editingLocation.name
+      const otherFieldsChanged = 
+        originalLocation.address !== editingLocation.address ||
+        originalLocation.latitude !== editingLocation.latitude ||
+        originalLocation.longitude !== editingLocation.longitude ||
+        originalLocation.radius_meters !== editingLocation.radius_meters ||
+        originalLocation.is_active !== editingLocation.is_active ||
+        originalLocation.check_in_start_time !== editingLocation.check_in_start_time ||
+        originalLocation.check_out_end_time !== editingLocation.check_out_end_time ||
+        originalLocation.require_early_checkout_reason !== editingLocation.require_early_checkout_reason ||
+        originalLocation.working_hours_description !== editingLocation.working_hours_description
+
+      if (!nameChanged) {
+        setError("You must change the location name to save changes")
+        return
+      }
+
+      if (otherFieldsChanged) {
+        setError("You can only edit the location name. Other fields cannot be changed.")
+        return
+      }
+    }
+
     setLoading(true)
     setError(null)
 
@@ -308,6 +344,11 @@ export function LocationManagement() {
   }
 
   const handleToggleLocation = async (location: GeofenceLocation) => {
+    if (isRestrictedAdmin) {
+      setError("You do not have permission to deactivate or activate locations")
+      return
+    }
+
     setLoading(true)
     setError(null)
 
@@ -673,10 +714,12 @@ export function LocationManagement() {
 
         <Dialog open={isAddingLocation} onOpenChange={setIsAddingLocation}>
           <DialogTrigger asChild>
-            <Button disabled={!isOnline} className="w-full sm:w-auto">
-              <Plus className="h-4 w-4 mr-2" />
-              Add Location
-            </Button>
+            {!isRestrictedAdmin && (
+              <Button disabled={!isOnline} className="w-full sm:w-auto">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Location
+              </Button>
+            )}
           </DialogTrigger>
           <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
             <DialogHeader>
@@ -845,7 +888,7 @@ export function LocationManagement() {
                 variant="outline"
                 onClick={getCurrentLocation}
                 className="w-full bg-transparent"
-                disabled={loading || locationPermission === "denied"}
+                disabled={loading || locationPermission === "denied" || isRestrictedAdmin}
               >
                 {loading ? (
                   <>
@@ -937,18 +980,27 @@ export function LocationManagement() {
                   <QrCode className="h-4 w-4 mr-1" />
                   QR Code
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => setEditingLocation(location)}>
-                  <Edit className="h-4 w-4" />
-                </Button>
-                <Button
-                  size="sm"
-                  variant={location.is_active ? "destructive" : "default"}
-                  onClick={() => handleToggleLocation(location)}
-                  disabled={loading}
-                  title={location.is_active ? "Deactivate location" : "Activate location"}
-                >
-                  <Power className="h-4 w-4" />
-                </Button>
+                {!isRestrictedAdmin && (
+                  <Button size="sm" variant="outline" onClick={() => setEditingLocation(location)}>
+                    <Edit className="h-4 w-4" />
+                  </Button>
+                )}
+                {isRestrictedAdmin && (
+                  <Button size="sm" variant="outline" onClick={() => setEditingLocation(location)}>
+                    <Edit className="h-4 w-4" />
+                  </Button>
+                )}
+                {!isRestrictedAdmin && (
+                  <Button
+                    size="sm"
+                    variant={location.is_active ? "destructive" : "default"}
+                    onClick={() => handleToggleLocation(location)}
+                    disabled={loading}
+                    title={location.is_active ? "Deactivate location" : "Activate location"}
+                  >
+                    <Power className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -973,8 +1025,14 @@ export function LocationManagement() {
         <Dialog open={!!editingLocation} onOpenChange={() => setEditingLocation(null)}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Edit Location</DialogTitle>
-              <DialogDescription>Update location information and settings</DialogDescription>
+              <DialogTitle>
+                {isRestrictedAdmin ? "Edit Location Name" : "Edit Location"}
+              </DialogTitle>
+              <DialogDescription>
+                {isRestrictedAdmin 
+                  ? "You can only edit the location name"
+                  : "Update location information and settings"}
+              </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div>
@@ -987,6 +1045,8 @@ export function LocationManagement() {
                   required
                 />
               </div>
+              {!isRestrictedAdmin && (
+                <>
               <div>
                 <Label htmlFor="editAddress">Address</Label>
                 <Input
@@ -1100,6 +1160,8 @@ export function LocationManagement() {
                   <MapPin className="h-4 w-4 mr-2" />
                   Use Current Location
                 </Button>
+                </>
+              )}
               </div>
               <DialogFooter>
               <Button variant="outline" onClick={() => setEditingLocation(null)}>

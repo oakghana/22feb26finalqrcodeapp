@@ -43,6 +43,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const body = await request.json()
     console.log("[v0] Location update data:", body)
 
+    // Check if user is restricted admin - only allow name changes
+    const isRestrictedAdmin = profile.role === "admin"
+
     const { name, address, latitude, longitude, radius_meters, is_active } = body
 
     const newLat = Number(latitude)
@@ -61,6 +64,20 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (fetchError || !currentLocation) {
       console.error("[v0] Location not found:", fetchError)
       return NextResponse.json({ error: "Location not found" }, { status: 404 })
+    }
+
+    // If restricted admin, validate that only name is being changed
+    if (isRestrictedAdmin) {
+      const coordinatesChanged =
+        Math.abs(currentLocation.latitude - newLat) > 0.00001 || Math.abs(currentLocation.longitude - newLng) > 0.00001
+      
+      if (coordinatesChanged || is_active !== undefined || radius_meters !== currentLocation.radius_meters || address !== currentLocation.address) {
+        console.log("[v0] Restricted admin attempted to change protected fields")
+        return NextResponse.json(
+          { error: "Restricted admins can only edit location names" },
+          { status: 403 }
+        )
+      }
     }
 
     const coordsChanged =

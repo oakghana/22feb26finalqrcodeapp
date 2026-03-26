@@ -18,7 +18,7 @@ export default async function LocationsPage() {
 
   return (
     <div className="container mx-auto py-6">
-      <LocationManagement />
+      <LocationManagement userRole={profile.role} />
     </div>
   )
 }
