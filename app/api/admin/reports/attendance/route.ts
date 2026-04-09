@@ -314,6 +314,24 @@ export async function GET(request: NextRequest) {
       }
     })
 
+    // Diagnostic: Log sample of enriched records to verify department data is present
+    const sampleRecords = enrichedRecords.slice(0, 5)
+    const withDepts = sampleRecords.filter(r => r.user_profiles?.departments?.name).length
+    const withoutDepts = sampleRecords.filter(r => !r.user_profiles?.departments?.name).length
+    if (sampleRecords.length > 0) {
+      console.log("[v0] Reports API - Department enrichment check:", {
+        sampleSize: sampleRecords.length,
+        withDepartments: withDepts,
+        withoutDepartments: withoutDepts,
+        examples: sampleRecords.slice(0, 3).map(r => ({
+          userId: r.user_id,
+          employeeName: r.user_profiles ? `${r.user_profiles.first_name} ${r.user_profiles.last_name}` : "N/A",
+          departmentId: r.user_profiles?.department_id,
+          departmentName: r.user_profiles?.departments?.name || "N/A"
+        }))
+      })
+    }
+
     // --- audit: if any attendance rows are missing user_profiles, write an audit log so admins can track and fix ---
     const missingProfiles = enrichedRecords.filter((r) => !r.user_profiles)
     if (missingProfiles.length > 0) {

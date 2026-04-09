@@ -362,10 +362,28 @@ export function AttendanceReports() {
       console.log("[v0] API response:", result)
 
       if (result.success) {
-        setRecords(result.data.records || [])
+        const recordsData = result.data.records || []
+        setRecords(recordsData)
         setSummary(result.data.summary || null)
         setTotalRecords(result.data.summary?.totalRecords || 0)
-        console.log("[v0] Successfully loaded", result.data.records?.length || 0, "records (page)")
+        
+        // Diagnostic: check if departments are populated
+        if (recordsData.length > 0) {
+          const withDepts = recordsData.filter((r: any) => r.user_profiles?.departments?.name).length
+          const withoutDepts = recordsData.filter((r: any) => !r.user_profiles?.departments?.name).length
+          console.log("[v0] Department enrichment status:", {
+            totalRecords: recordsData.length,
+            withDepartments: withDepts,
+            withoutDepartments: withoutDepts,
+            samples: recordsData.slice(0, 3).map((r: any) => ({
+              userId: r.user_id,
+              name: r.user_profiles?.first_name + " " + r.user_profiles?.last_name,
+              department: r.user_profiles?.departments?.name || "MISSING"
+            }))
+          })
+        }
+        
+        console.log("[v0] Successfully loaded", recordsData.length, "records (page)")
       } else {
         console.error("[v0] API error:", result.error)
         setExportError(result.error || "Failed to fetch report data")
