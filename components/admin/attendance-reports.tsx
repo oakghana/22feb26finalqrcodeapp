@@ -464,6 +464,53 @@ export function AttendanceReports() {
       if (allRecords.length >= 100000) break
     }
 
+    // Enrich records with department data from Supabase before export
+    // This ensures that even if the API didn't fully populate departments, we do it here
+    if (allRecords.length > 0) {
+      try {
+        const supabase = createClient()
+        const userIds = [...new Set(allRecords.map(r => r.user_id).filter(Boolean))]
+        
+        if (userIds.length > 0) {
+          const { data: profiles } = await supabase
+            .from("user_profiles")
+            .select(`
+              id,
+              department_id,
+              assigned_location_id,
+              departments ( id, name, code ),
+              assigned_location:geofence_locations!assigned_location_id ( id, name, address )
+            `)
+            .in("id", userIds)
+
+          if (profiles && profiles.length > 0) {
+            const profileMap = new Map(profiles.map((p: any) => [p.id, p]))
+            
+            // Update records with enriched profile data
+            return allRecords.map((record) => {
+              const profile = profileMap.get(record.user_id)
+              if (profile) {
+                return {
+                  ...record,
+                  user_profiles: {
+                    ...record.user_profiles,
+                    department_id: profile.department_id,
+                    departments: profile.departments,
+                    assigned_location_id: profile.assigned_location_id,
+                    assigned_location: profile.assigned_location,
+                  }
+                }
+              }
+              return record
+            })
+          }
+        }
+      } catch (err) {
+        console.error("[v0] Failed to enrich records with departments:", err)
+        // Continue with partially enriched data
+      }
+    }
+
     return allRecords
   }
 

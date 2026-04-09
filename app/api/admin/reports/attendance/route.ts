@@ -174,12 +174,16 @@ export async function GET(request: NextRequest) {
       const { data: depts, error: deptError } = await adminClient.from("departments").select("id, name, code").in("id", deptIds)
       if (!deptError) {
         depts?.forEach(d => deptMap.set(d.id, d))
+      } else {
+        console.error("[v0] Reports API - Department fetch error:", deptError)
       }
     }
     if (locIds.length > 0) {
       const { data: locs, error: locError } = await adminClient.from("geofence_locations").select("id, name, address, district_id").in("id", locIds)
       if (!locError) {
         locs?.forEach(l => locMap.set(l.id, l))
+      } else {
+        console.error("[v0] Reports API - Location fetch error:", locError)
       }
     }
     
@@ -193,40 +197,13 @@ export async function GET(request: NextRequest) {
         assigned_location: loc,
       }
     })
-  }
-  
-  // For profiles without department_id, try to fetch from a fresh query to ensure we have latest data
-  const profilesWithoutDept = userProfiles.filter(p => !p.department_id)
-  if (profilesWithoutDept.length > 0) {
-    const missingDeptUserIds = profilesWithoutDept.map(p => p.id)
     
-    // Re-fetch these profiles directly with department join to get latest data
-    const { data: freshProfiles, error: freshError } = await adminClient
-      .from("user_profiles")
-      .select(`
-        id,
-        department_id,
-        assigned_location_id,
-        departments:department_id(id, name, code),
-        assigned_location:geofence_locations!assigned_location_id(id, name, address, district_id)
-      `)
-      .in("id", missingDeptUserIds)
-    
-    if (!freshError && freshProfiles && freshProfiles.length > 0) {
-      // Update the userProfiles with fresh department data
-      const freshMap = new Map(freshProfiles.map((fp: any) => [fp.id, fp]))
-      userProfiles = userProfiles.map(profile => {
-        const fresh = freshMap.get(profile.id)
-        if (fresh && (fresh.departments || fresh.assigned_location)) {
-          return {
-            ...profile,
-            department_id: fresh.department_id || profile.department_id,
-            departments: fresh.departments || profile.departments,
-            assigned_location_id: fresh.assigned_location_id || profile.assigned_location_id,
-            assigned_location: fresh.assigned_location || profile.assigned_location,
-          }
-        }
-        return profile
+    // Log any profiles still missing departments after the mapping
+    const stillMissingDept = userProfiles.filter(p => p.department_id && !p.departments)
+    if (stillMissingDept.length > 0) {
+      console.warn("[v0] Reports API - Profiles with department_id but missing department data:", {
+        count: stillMissingDept.length,
+        examples: stillMissingDept.slice(0, 5).map(p => ({ id: p.id, department_id: p.department_id }))
       })
     }
   }
