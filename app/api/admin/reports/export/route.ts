@@ -114,27 +114,39 @@ export async function POST(request: NextRequest) {
 
       // Fetch departments
       const departmentIds = [...new Set(allUserProfiles.map(p => p.department_id).filter(Boolean))]
-      const { data: departments } = await supabase.from("departments").select("id, name").in("id", departmentIds)
+      const { data: departments } = await adminClient.from("departments").select("id, name").in("id", departmentIds)
 
       // Fetch locations
-      const { data: locations } = await supabase
+      const { data: locations } = await adminClient
         .from("geofence_locations")
         .select("id, name, address")
         .in("id", locationIds)
 
-      const userProfileMap = new Map(allUserProfiles.map((p) => [p.id, p]))
+      // Build enriched profile map with department and location data
+      const userProfileMap = new Map<string, any>()
       const departmentMap  = new Map(departments?.map((d) => [d.id, d]) || [])
       const locationMap    = new Map(locations?.map((l) => [l.id, l]) || [])
+      
+      allUserProfiles.forEach((profile) => {
+        const enrichedProfile = {
+          ...profile,
+          departments: profile.department_id ? departmentMap.get(profile.department_id) : null,
+        }
+        userProfileMap.set(profile.id, enrichedProfile)
+      })
 
       const exportData = attendanceRecords.map((record) => {
         const userProfile = userProfileMap.get(record.user_id)
-        const department = userProfile ? departmentMap.get(userProfile.department_id) : null
+        const department = userProfile?.departments
         const location = locationMap.get(record.check_in_location_id)
+
+        // Ensure department is included in export, defaulting to "N/A" if missing
+        const departmentName = department?.name || "N/A"
 
         return {
           "Employee ID": userProfile?.employee_id || "N/A",
           Name: userProfile ? `${userProfile.first_name} ${userProfile.last_name}` : "N/A",
-          Department: department?.name || "N/A",
+          Department: departmentName,
           District: "N/A", // District info not available in current schema
           Location: location?.name || "N/A",
           "Check In": new Date(record.check_in_time).toLocaleString(),

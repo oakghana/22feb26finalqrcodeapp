@@ -362,10 +362,28 @@ export function AttendanceReports() {
       console.log("[v0] API response:", result)
 
       if (result.success) {
-        setRecords(result.data.records || [])
+        const recordsData = result.data.records || []
+        setRecords(recordsData)
         setSummary(result.data.summary || null)
         setTotalRecords(result.data.summary?.totalRecords || 0)
-        console.log("[v0] Successfully loaded", result.data.records?.length || 0, "records (page)")
+        
+        // Diagnostic: check if departments are populated
+        if (recordsData.length > 0) {
+          const withDepts = recordsData.filter((r: any) => r.user_profiles?.departments?.name).length
+          const withoutDepts = recordsData.filter((r: any) => !r.user_profiles?.departments?.name).length
+          console.log("[v0] Department enrichment status:", {
+            totalRecords: recordsData.length,
+            withDepartments: withDepts,
+            withoutDepartments: withoutDepts,
+            samples: recordsData.slice(0, 3).map((r: any) => ({
+              userId: r.user_id,
+              name: r.user_profiles?.first_name + " " + r.user_profiles?.last_name,
+              department: r.user_profiles?.departments?.name || "MISSING"
+            }))
+          })
+        }
+        
+        console.log("[v0] Successfully loaded", recordsData.length, "records (page)")
       } else {
         console.error("[v0] API error:", result.error)
         setExportError(result.error || "Failed to fetch report data")
@@ -462,6 +480,53 @@ export function AttendanceReports() {
 
       // Safety: stop if we somehow exceed 100k records to avoid infinite loops
       if (allRecords.length >= 100000) break
+    }
+
+    // Enrich records with department data from Supabase before export
+    // This ensures that even if the API didn't fully populate departments, we do it here
+    if (allRecords.length > 0) {
+      try {
+        const supabase = createClient()
+        const userIds = [...new Set(allRecords.map(r => r.user_id).filter(Boolean))]
+        
+        if (userIds.length > 0) {
+          const { data: profiles } = await supabase
+            .from("user_profiles")
+            .select(`
+              id,
+              department_id,
+              assigned_location_id,
+              departments ( id, name, code ),
+              assigned_location:geofence_locations!assigned_location_id ( id, name, address )
+            `)
+            .in("id", userIds)
+
+          if (profiles && profiles.length > 0) {
+            const profileMap = new Map(profiles.map((p: any) => [p.id, p]))
+            
+            // Update records with enriched profile data
+            return allRecords.map((record) => {
+              const profile = profileMap.get(record.user_id)
+              if (profile) {
+                return {
+                  ...record,
+                  user_profiles: {
+                    ...record.user_profiles,
+                    department_id: profile.department_id,
+                    departments: profile.departments,
+                    assigned_location_id: profile.assigned_location_id,
+                    assigned_location: profile.assigned_location,
+                  }
+                }
+              }
+              return record
+            })
+          }
+        }
+      } catch (err) {
+        console.error("[v0] Failed to enrich records with departments:", err)
+        // Continue with partially enriched data
+      }
     }
 
     return allRecords
