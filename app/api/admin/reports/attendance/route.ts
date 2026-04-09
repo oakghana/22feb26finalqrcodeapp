@@ -171,12 +171,21 @@ export async function GET(request: NextRequest) {
     const locMap  = new Map<string, any>()
     
     if (deptIds.length > 0) {
-      const { data: depts, error: deptError } = await adminClient.from("departments").select("id, name, code").in("id", deptIds)
-      if (!deptError) {
-        depts?.forEach(d => deptMap.set(d.id, d))
-      } else {
-        console.error("[v0] Reports API - Department fetch error:", deptError)
+      // Handle Supabase .in() limit (max ~200 items per query) by batching
+      const BATCH_SIZE = 200
+      for (let i = 0; i < deptIds.length; i += BATCH_SIZE) {
+        const batch = deptIds.slice(i, i + BATCH_SIZE)
+        const { data: depts, error: deptError } = await adminClient
+          .from("departments")
+          .select("id, name, code")
+          .in("id", batch)
+        if (!deptError && depts) {
+          depts.forEach(d => deptMap.set(d.id, d))
+        } else if (deptError) {
+          console.error("[v0] Reports API - Department fetch error for batch:", { batch: batch.length, error: deptError })
+        }
       }
+      console.log("[v0] Reports API - Fetched departments:", { total: deptIds.length, mapped: deptMap.size })
     }
     if (locIds.length > 0) {
       const { data: locs, error: locError } = await adminClient.from("geofence_locations").select("id, name, address, district_id").in("id", locIds)
@@ -198,14 +207,15 @@ export async function GET(request: NextRequest) {
       }
     })
     
-    // Log any profiles still missing departments after the mapping
-    const stillMissingDept = userProfiles.filter(p => p.department_id && !p.departments)
-    if (stillMissingDept.length > 0) {
-      console.warn("[v0] Reports API - Profiles with department_id but missing department data:", {
-        count: stillMissingDept.length,
-        examples: stillMissingDept.slice(0, 5).map(p => ({ id: p.id, department_id: p.department_id }))
-      })
-    }
+    // Diagnostic logging
+    const profilesWithDept = userProfiles.filter(p => p.departments)
+    const profilesWithoutDept = userProfiles.filter(p => p.department_id && !p.departments)
+    console.log("[v0] Reports API - Profile department enrichment:", {
+      total: userProfiles.length,
+      withDepartment: profilesWithDept.length,
+      withoutDepartment: profilesWithoutDept.length,
+      missingDeptExamples: profilesWithoutDept.slice(0, 3).map(p => ({ id: p.id, dept_id: p.department_id }))
+    })
   }
 
     const userMap = new Map(userProfiles.map((u) => [u.id, u]))
