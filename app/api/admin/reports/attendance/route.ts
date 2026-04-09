@@ -219,50 +219,52 @@ export async function GET(request: NextRequest) {
     })
   }
 
-    // For records with no matching profile, try to fetch their user_profiles again
-    // (they might not have been in the filtered set from the current attendance batch)
-    const missingIds = [...userIds].filter(id => !userMap.has(id))
-    if (missingIds.length > 0) {
-      console.log("[v0] Reports API - Fetching missing user profiles for", missingIds.length, "users")
+  // Create initial userMap
+  let userMap = new Map(userProfiles.map((u) => [u.id, u]))
+
+  // For records with no matching profile, try to fetch their user_profiles again
+  // (they might not have been in the filtered set from the current attendance batch)
+  const missingIds = [...userIds].filter(id => !userMap.has(id))
+  if (missingIds.length > 0) {
+    console.log("[v0] Reports API - Fetching missing user profiles for", missingIds.length, "users")
+    
+    // Fetch profiles for missing users in batches
+    const BATCH_SIZE = 200
+    for (let i = 0; i < missingIds.length; i += BATCH_SIZE) {
+      const batch = missingIds.slice(i, i + BATCH_SIZE)
+      const { data: missingProfiles } = await adminClient
+        .from("user_profiles")
+        .select("id, first_name, last_name, email, employee_id, department_id, assigned_location_id")
+        .in("id", batch)
       
-      // Fetch profiles for missing users in batches
-      const BATCH_SIZE = 200
-      for (let i = 0; i < missingIds.length; i += BATCH_SIZE) {
-        const batch = missingIds.slice(i, i + BATCH_SIZE)
-        const { data: missingProfiles } = await adminClient
-          .from("user_profiles")
-          .select("id, first_name, last_name, email, employee_id, department_id, assigned_location_id")
-          .in("id", batch)
+      if (missingProfiles && missingProfiles.length > 0) {
+        // Add these profiles to our collection and enrich them with departments
+        userProfiles.push(...missingProfiles)
         
-        if (missingProfiles && missingProfiles.length > 0) {
-          // Add these profiles to our collection and enrich them with departments
-          userProfiles.push(...missingProfiles)
-          
-          // Collect their department IDs and fetch those departments
-          const newDeptIds = [...new Set(
-            missingProfiles
-              .map(p => p.department_id)
-              .filter(Boolean)
-              .filter(id => !deptMap.has(id))
-          )]
-          
-          for (let j = 0; j < newDeptIds.length; j += BATCH_SIZE) {
-            const deptBatch = newDeptIds.slice(j, j + BATCH_SIZE)
-            const { data: depts } = await adminClient
-              .from("departments")
-              .select("id, name, code")
-              .in("id", deptBatch)
-            if (depts) {
-              depts.forEach(d => deptMap.set(d.id, d))
-            }
+        // Collect their department IDs and fetch those departments
+        const newDeptIds = [...new Set(
+          missingProfiles
+            .map(p => p.department_id)
+            .filter(Boolean)
+            .filter(id => !deptMap.has(id))
+        )]
+        
+        for (let j = 0; j < newDeptIds.length; j += BATCH_SIZE) {
+          const deptBatch = newDeptIds.slice(j, j + BATCH_SIZE)
+          const { data: depts } = await adminClient
+            .from("departments")
+            .select("id, name, code")
+            .in("id", deptBatch)
+          if (depts) {
+            depts.forEach(d => deptMap.set(d.id, d))
           }
-          
-          console.log("[v0] Reports API - Recovered", missingProfiles.length, "user profiles from database")
         }
+        
+        console.log("[v0] Reports API - Recovered", missingProfiles.length, "user profiles from database")
       }
     }
-
-    // Re-enrich all profiles with now-complete department data
+    
+    // Re-enrich newly added profiles with now-complete department data
     userProfiles = userProfiles.map(profile => {
       const dept = profile.department_id ? deptMap.get(profile.department_id) : null
       const loc = profile.assigned_location_id ? locMap.get(profile.assigned_location_id) : null
@@ -273,148 +275,149 @@ export async function GET(request: NextRequest) {
         assigned_location: loc,
       }
     })
-
-    // Update userMap with all enriched profiles
-    const userMap = new Map(userProfiles.map((u) => [u.id, u]))
     
-    const authUserMap = new Map<string, { email?: string | null, first_name: string, last_name: string, employee_id: string }>()
-    // Now for any remaining missing users, fall back to auth.users (paginate all pages)
-    const stillMissingIds = [...userIds].filter(id => !userMap.has(id))
-    if (stillMissingIds.length > 0) {
-      console.log("[v0] Reports API - Fetching from auth.users for", stillMissingIds.length, "remaining users")
-      try {
-        let page = 1
-        const perPage = 1000
-        while (true) {
-          const { data: authPage } = await adminClient.auth.admin.listUsers({ page, perPage })
-          const users = authPage?.users || []
-          users.forEach((u) => {
-            if (stillMissingIds.includes(u.id)) {
-              const meta = u.user_metadata || {}
-              let fn = meta.first_name || meta.name?.split(' ')[0] || ''
-              let ln = meta.last_name  || meta.name?.split(' ').slice(1).join(' ') || ''
-              if (!fn && u.email) {
-                const parts = u.email.split('@')[0].split(/[._-]/).filter(Boolean)
-                fn = parts[0] ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1).toLowerCase() : ''
-                ln = parts.slice(1).map((p: string) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ')
-              }
-              authUserMap.set(u.id, {
-                email: u.email,
-                first_name: fn || 'Unknown',
-                last_name: ln || 'User',
-                employee_id: meta.employee_id || u.id.slice(0, 8).toUpperCase(),
-              })
+    // Update userMap with all enriched profiles
+    userMap = new Map(userProfiles.map((u) => [u.id, u]))
+  }
+
+  const authUserMap = new Map<string, { email?: string | null, first_name: string, last_name: string, employee_id: string }>()
+  // For any remaining missing users, fall back to auth.users (paginate all pages)
+  const stillMissingIds = [...userIds].filter(id => !userMap.has(id))
+  if (stillMissingIds.length > 0) {
+    console.log("[v0] Reports API - Fetching from auth.users for", stillMissingIds.length, "remaining users")
+    try {
+      let page = 1
+      const perPage = 1000
+      while (true) {
+        const { data: authPage } = await adminClient.auth.admin.listUsers({ page, perPage })
+        const users = authPage?.users || []
+        users.forEach((u) => {
+          if (stillMissingIds.includes(u.id)) {
+            const meta = u.user_metadata || {}
+            let fn = meta.first_name || meta.name?.split(' ')[0] || ''
+            let ln = meta.last_name  || meta.name?.split(' ').slice(1).join(' ') || ''
+            if (!fn && u.email) {
+              const parts = u.email.split('@')[0].split(/[._-]/).filter(Boolean)
+              fn = parts[0] ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1).toLowerCase() : ''
+              ln = parts.slice(1).map((p: string) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ')
             }
-          })
-          if (users.length < perPage) break
-          page++
-        }
-      } catch (authErr) {
-        console.error('[v0] Reports API - Failed to fetch auth users:', authErr)
-      }
-    }
-
-    // All department and location filtering is now done at the DB query level above.
-    // Post-fetch we only need district filtering (no DB column to filter on directly).
-    let filteredRecords = attendanceRecords
-
-    if (safeDistrictId) {
-      filteredRecords = filteredRecords.filter((record) => {
-        const user = userMap.get(record.user_id)
-        return (
-          user?.assigned_location?.district_id === safeDistrictId ||
-          record.check_in_location?.district_id === safeDistrictId
-        )
-      })
-    }
-
-    console.log("[v0] Reports API - After filtering:", filteredRecords.length, "records")
-
-    // Diagnostic: if we fetched records but filtering removed all of them, log helpful details
-    if ((attendanceRecords?.length || 0) > 0 && filteredRecords.length === 0) {
-      try {
-        console.warn("[v0] Reports API - Filtering removed all fetched records — diagnostic info:", {
-          userRole: profile?.role,
-          profileDepartmentId: profile?.department_id,
-          requestDepartmentId: departmentId,
-          requestDistrictId: districtId,
-          fetchedAttendanceCount: attendanceRecords.length,
-          attendanceUserIds: userIds,
-          foundUserProfilesCount: (userProfiles || []).length,
-          userProfilesPreview: (userProfiles || []).slice(0, 10).map((u: any) => ({ id: u.id, department_id: u.department_id, assigned_location_id: u.assigned_location_id }))
+            authUserMap.set(u.id, {
+              email: u.email,
+              first_name: fn || 'Unknown',
+              last_name: ln || 'User',
+              employee_id: meta.employee_id || u.id.slice(0, 8).toUpperCase(),
+            })
+          }
         })
-      } catch (diagErr) {
-        console.error('[v0] Reports API - Diagnostic logging failed:', diagErr)
+        if (users.length < perPage) break
+        page++
       }
+    } catch (authErr) {
+      console.error('[v0] Reports API - Failed to fetch auth users:', authErr)
     }
+  }
 
-    const enrichedRecords = filteredRecords.map((record) => {
-      const userProfile = userMap.get(record.user_id) || null
+  // All department and location filtering is now done at the DB query level above.
+  // Post-fetch we only need district filtering (no DB column to filter on directly).
+  let filteredRecords = attendanceRecords
 
-      // Determine if check-in/check-out was outside assigned location
-      const isCheckInOutsideLocation =
-        userProfile?.assigned_location_id && record.check_in_location_id !== userProfile.assigned_location_id
-
-      const isCheckOutOutsideLocation =
-        userProfile?.assigned_location_id &&
-        record.check_out_location_id &&
-        record.check_out_location_id !== userProfile.assigned_location_id
-
-      // If no profile, use enriched auth user data as fallback
-      const authUser = authUserMap.get(record.user_id)
-      const enrichedProfile = userProfile || (authUser ? { 
-        id: record.user_id,
-        email: authUser.email,
-        first_name: authUser.first_name,
-        last_name: authUser.last_name,
-        employee_id: authUser.employee_id,
-        departments: null,
-        assigned_location: null
-      } : null)
-
-      return {
-        ...record,
-        user_profiles: enrichedProfile,
-        is_check_in_outside_location: isCheckInOutsideLocation,
-        is_check_out_outside_location: isCheckOutOutsideLocation,
-        // Keep backward compatibility
-        geofence_locations: record.check_in_location,
-      }
+  if (safeDistrictId) {
+    filteredRecords = filteredRecords.filter((record) => {
+      const user = userMap.get(record.user_id)
+      return (
+        user?.assigned_location?.district_id === safeDistrictId ||
+        record.check_in_location?.district_id === safeDistrictId
+      )
     })
+  }
 
-    // Diagnostic: Log sample of enriched records to verify department data is present
-    const sampleRecords = enrichedRecords.slice(0, 5)
-    const withDepts = sampleRecords.filter(r => r.user_profiles?.departments?.name).length
-    const withoutDepts = sampleRecords.filter(r => !r.user_profiles?.departments?.name).length
-    if (sampleRecords.length > 0) {
-      console.log("[v0] Reports API - Department enrichment check:", {
-        sampleSize: sampleRecords.length,
-        withDepartments: withDepts,
-        withoutDepartments: withoutDepts,
-        examples: sampleRecords.slice(0, 3).map(r => ({
-          userId: r.user_id,
-          employeeName: r.user_profiles ? `${r.user_profiles.first_name} ${r.user_profiles.last_name}` : "N/A",
-          departmentId: r.user_profiles?.department_id,
-          departmentName: r.user_profiles?.departments?.name || "N/A"
-        }))
+  console.log("[v0] Reports API - After filtering:", filteredRecords.length, "records")
+
+  // Diagnostic: if we fetched records but filtering removed all of them, log helpful details
+  if ((attendanceRecords?.length || 0) > 0 && filteredRecords.length === 0) {
+    try {
+      console.warn("[v0] Reports API - Filtering removed all fetched records — diagnostic info:", {
+        userRole: profile?.role,
+        profileDepartmentId: profile?.department_id,
+        requestDepartmentId: departmentId,
+        requestDistrictId: districtId,
+        fetchedAttendanceCount: attendanceRecords.length,
+        attendanceUserIds: userIds,
+        foundUserProfilesCount: (userProfiles || []).length,
+        userProfilesPreview: (userProfiles || []).slice(0, 10).map((u: any) => ({ id: u.id, department_id: u.department_id, assigned_location_id: u.assigned_location_id }))
       })
+    } catch (diagErr) {
+      console.error('[v0] Reports API - Diagnostic logging failed:', diagErr)
     }
+  }
 
-    // --- audit: if any attendance rows are missing user_profiles, write an audit log so admins can track and fix ---
-    const missingProfiles = enrichedRecords.filter((r) => !r.user_profiles)
-    if (missingProfiles.length > 0) {
-      try {
-        await supabase.from('audit_logs').insert({
-          user_id: user.id,
-          action: 'missing_user_profiles_detected',
-          table_name: 'attendance_records',
-          details: { missing_count: missingProfiles.length, examples: missingProfiles.slice(0,10).map(m => ({ id: m.id, user_id: m.user_id })) },
-          ip_address: (request as any).ip || request.headers.get('x-forwarded-for') || null,
-          user_agent: request.headers.get('user-agent')
-        })
-      } catch (auditErr) {
-        console.error('[v0] Reports API - Failed to write missing_user_profiles audit log:', auditErr)
-      }
+  const enrichedRecords = filteredRecords.map((record) => {
+    const userProfile = userMap.get(record.user_id) || null
+
+    // Determine if check-in/check-out was outside assigned location
+    const isCheckInOutsideLocation =
+      userProfile?.assigned_location_id && record.check_in_location_id !== userProfile.assigned_location_id
+
+    const isCheckOutOutsideLocation =
+      userProfile?.assigned_location_id &&
+      record.check_out_location_id &&
+      record.check_out_location_id !== userProfile.assigned_location_id
+
+    // If no profile, use enriched auth user data as fallback
+    const authUser = authUserMap.get(record.user_id)
+    const enrichedProfile = userProfile || (authUser ? { 
+      id: record.user_id,
+      email: authUser.email,
+      first_name: authUser.first_name,
+      last_name: authUser.last_name,
+      employee_id: authUser.employee_id,
+      departments: null,
+      assigned_location: null
+    } : null)
+
+    return {
+      ...record,
+      user_profiles: enrichedProfile,
+      is_check_in_outside_location: isCheckInOutsideLocation,
+      is_check_out_outside_location: isCheckOutOutsideLocation,
+      // Keep backward compatibility
+      geofence_locations: record.check_in_location,
+    }
+  })
+
+  // Diagnostic: Log sample of enriched records to verify department data is present
+  const sampleRecords = enrichedRecords.slice(0, 5)
+  const withDepts = sampleRecords.filter(r => r.user_profiles?.departments?.name).length
+  const withoutDepts = sampleRecords.filter(r => !r.user_profiles?.departments?.name).length
+  if (sampleRecords.length > 0) {
+    console.log("[v0] Reports API - Department enrichment check:", {
+      sampleSize: sampleRecords.length,
+      withDepartments: withDepts,
+      withoutDepartments: withoutDepts,
+      examples: sampleRecords.slice(0, 3).map(r => ({
+        userId: r.user_id,
+        employeeName: r.user_profiles ? `${r.user_profiles.first_name} ${r.user_profiles.last_name}` : "N/A",
+        departmentId: r.user_profiles?.department_id,
+        departmentName: r.user_profiles?.departments?.name || "N/A"
+      }))
+    })
+  }
+
+  // --- audit: if any attendance rows are missing user_profiles, write an audit log so admins can track and fix ---
+  const missingProfiles = enrichedRecords.filter((r) => !r.user_profiles)
+  if (missingProfiles.length > 0) {
+    try {
+      await supabase.from('audit_logs').insert({
+        user_id: user.id,
+        action: 'missing_user_profiles_detected',
+        table_name: 'attendance_records',
+        details: { missing_count: missingProfiles.length, examples: missingProfiles.slice(0,10).map(m => ({ id: m.id, user_id: m.user_id })) },
+        ip_address: (request as any).ip || request.headers.get('x-forwarded-for') || null,
+        user_agent: request.headers.get('user-agent')
+      })
+    } catch (auditErr) {
+      console.error('[v0] Reports API - Failed to write missing_user_profiles audit log:', auditErr)
+    }
     }
 
     // Calculate summary statistics
