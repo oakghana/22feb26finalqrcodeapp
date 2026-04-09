@@ -164,11 +164,12 @@ export async function GET(request: NextRequest) {
 
   // Enrich profiles with department and location names
   // Use admin client to bypass RLS for department/location lookups
+  const deptMap = new Map<string, any>()
+  const locMap  = new Map<string, any>()
+  
   if (userProfiles.length > 0) {
     const deptIds = [...new Set(userProfiles.map(p => p.department_id).filter(Boolean))]
     const locIds  = [...new Set(userProfiles.map(p => p.assigned_location_id).filter(Boolean))]
-    const deptMap = new Map<string, any>()
-    const locMap  = new Map<string, any>()
     
     if (deptIds.length > 0) {
       // Handle Supabase .in() limit (max ~200 items per query) by batching
@@ -218,12 +219,69 @@ export async function GET(request: NextRequest) {
     })
   }
 
-    const userMap = new Map(userProfiles.map((u) => [u.id, u]))
-
-    // For records with no matching profile, fall back to auth.users (paginate all pages)
+    // For records with no matching profile, try to fetch their user_profiles again
+    // (they might not have been in the filtered set from the current attendance batch)
     const missingIds = [...userIds].filter(id => !userMap.has(id))
-    const authUserMap = new Map<string, { email?: string | null, first_name: string, last_name: string, employee_id: string }>()
     if (missingIds.length > 0) {
+      console.log("[v0] Reports API - Fetching missing user profiles for", missingIds.length, "users")
+      
+      // Fetch profiles for missing users in batches
+      const BATCH_SIZE = 200
+      for (let i = 0; i < missingIds.length; i += BATCH_SIZE) {
+        const batch = missingIds.slice(i, i + BATCH_SIZE)
+        const { data: missingProfiles } = await adminClient
+          .from("user_profiles")
+          .select("id, first_name, last_name, email, employee_id, department_id, assigned_location_id")
+          .in("id", batch)
+        
+        if (missingProfiles && missingProfiles.length > 0) {
+          // Add these profiles to our collection and enrich them with departments
+          userProfiles.push(...missingProfiles)
+          
+          // Collect their department IDs and fetch those departments
+          const newDeptIds = [...new Set(
+            missingProfiles
+              .map(p => p.department_id)
+              .filter(Boolean)
+              .filter(id => !deptMap.has(id))
+          )]
+          
+          for (let j = 0; j < newDeptIds.length; j += BATCH_SIZE) {
+            const deptBatch = newDeptIds.slice(j, j + BATCH_SIZE)
+            const { data: depts } = await adminClient
+              .from("departments")
+              .select("id, name, code")
+              .in("id", deptBatch)
+            if (depts) {
+              depts.forEach(d => deptMap.set(d.id, d))
+            }
+          }
+          
+          console.log("[v0] Reports API - Recovered", missingProfiles.length, "user profiles from database")
+        }
+      }
+    }
+
+    // Re-enrich all profiles with now-complete department data
+    userProfiles = userProfiles.map(profile => {
+      const dept = profile.department_id ? deptMap.get(profile.department_id) : null
+      const loc = profile.assigned_location_id ? locMap.get(profile.assigned_location_id) : null
+      
+      return {
+        ...profile,
+        departments: dept,
+        assigned_location: loc,
+      }
+    })
+
+    // Update userMap with all enriched profiles
+    const userMap = new Map(userProfiles.map((u) => [u.id, u]))
+    
+    const authUserMap = new Map<string, { email?: string | null, first_name: string, last_name: string, employee_id: string }>()
+    // Now for any remaining missing users, fall back to auth.users (paginate all pages)
+    const stillMissingIds = [...userIds].filter(id => !userMap.has(id))
+    if (stillMissingIds.length > 0) {
+      console.log("[v0] Reports API - Fetching from auth.users for", stillMissingIds.length, "remaining users")
       try {
         let page = 1
         const perPage = 1000
@@ -231,7 +289,7 @@ export async function GET(request: NextRequest) {
           const { data: authPage } = await adminClient.auth.admin.listUsers({ page, perPage })
           const users = authPage?.users || []
           users.forEach((u) => {
-            if (missingIds.includes(u.id)) {
+            if (stillMissingIds.includes(u.id)) {
               const meta = u.user_metadata || {}
               let fn = meta.first_name || meta.name?.split(' ')[0] || ''
               let ln = meta.last_name  || meta.name?.split(' ').slice(1).join(' ') || ''
