@@ -3,6 +3,7 @@
 import { StatsCard } from "@/components/dashboard/stats-card"
 import { QuickActions } from "@/components/dashboard/quick-actions"
 import { LeaveNotificationsCard } from "@/components/leave/leave-notifications-card"
+import { MissedCheckoutWarningBanner } from "@/components/notifications/missed-checkout-warning-banner"
 import ActiveLocationsCard from "@/components/admin/active-locations-card"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -12,12 +13,20 @@ import Link from "next/link"
 import { MobileAppDownload } from "@/components/ui/mobile-app-download"
 import { PWAInstallToast } from "@/components/pwa/pwa-install-toast"
 
+interface MissedCheckoutWarning {
+  type: string
+  date: string
+  message: string
+  missedCheckInTime?: string
+}
+
 interface DashboardOverviewClientProps {
   user: any
   profile: any
   todayAttendance: any
   monthlyAttendance: number
   pendingApprovals: number
+  missedCheckoutWarning?: MissedCheckoutWarning | null
 }
 
 export function DashboardOverviewClient({
@@ -26,6 +35,7 @@ export function DashboardOverviewClient({
   todayAttendance,
   monthlyAttendance,
   pendingApprovals,
+  missedCheckoutWarning,
 }: DashboardOverviewClientProps) {
   return (
     <div className="space-y-8">
@@ -40,6 +50,10 @@ export function DashboardOverviewClient({
             {profile?.last_name || ""}
           </p>
         </div>
+
+        {missedCheckoutWarning && (
+          <MissedCheckoutWarningBanner warning={missedCheckoutWarning} />
+        )}
 
         {profile?.role === "admin" && pendingApprovals > 0 && (
           <Alert className="border-primary/20 bg-primary/5 shadow-sm">

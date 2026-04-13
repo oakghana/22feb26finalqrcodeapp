@@ -53,6 +53,34 @@ export default async function DashboardOverviewPage() {
     pendingApprovals = count || 0
   }
 
+  // Check for missed checkout from yesterday
+  let missedCheckoutWarning = null
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+  const yesterdayStart = new Date(yesterday)
+  yesterdayStart.setHours(0, 0, 0, 0)
+  const yesterdayEnd = new Date(yesterday)
+  yesterdayEnd.setHours(23, 59, 59, 999)
+
+  const { data: unfinishedRecords } = await supabase
+    .from("attendance_records")
+    .select("id, check_in_time, check_out_time, created_at")
+    .eq("user_id", user.id)
+    .gte("created_at", yesterdayStart.toISOString())
+    .lte("created_at", yesterdayEnd.toISOString())
+    .is("check_out_time", null)
+    .limit(1)
+
+  if (unfinishedRecords && unfinishedRecords.length > 0) {
+    const missedRecord = unfinishedRecords[0]
+    missedCheckoutWarning = {
+      type: "no_checkout",
+      date: yesterday.toISOString().split("T")[0],
+      message: "You did not check out yesterday before 11:59 PM",
+      missedCheckInTime: missedRecord.check_in_time,
+    }
+  }
+
   return (
     <DashboardOverviewClient
       user={user}
@@ -60,6 +88,7 @@ export default async function DashboardOverviewPage() {
       todayAttendance={todayData}
       monthlyAttendance={monthCount || 0}
       pendingApprovals={pendingApprovals}
+      missedCheckoutWarning={missedCheckoutWarning}
     />
   )
 }
