@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { calculateWorkingDays, calculateAttendancePercentage } from "@/lib/attendance-utils"
 
 export async function GET(request: NextRequest) {
   try {
@@ -72,11 +73,12 @@ export async function GET(request: NextRequest) {
       .gte("check_in_time", startDate.toISOString())
       .lte("check_in_time", endDate.toISOString())
 
-    // Calculate attendance rate
-    const totalWorkingDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
-    const expectedAttendance = (totalEmployees || 0) * totalWorkingDays
+    // Calculate attendance rate using correct working days calculation
+    // Excludes weekends and holidays for non-security staff
+    const workingDays = calculateWorkingDays(startDate, endDate)
+    const expectedAttendance = (totalEmployees || 0) * workingDays
     const actualAttendance = attendanceRecords?.length || 0
-    const attendanceRate = expectedAttendance > 0 ? (actualAttendance / expectedAttendance) * 100 : 0
+    const attendanceRate = calculateAttendancePercentage(actualAttendance, startDate, endDate, totalEmployees || 0)
 
     // Calculate average work hours
     const totalWorkHours =
