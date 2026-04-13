@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { calculateWorkingDays, isSecurityDept } from "@/lib/attendance-utils"
 
 export async function GET(request: Request) {
   try {
@@ -91,7 +92,8 @@ export async function GET(request: Request) {
         const attendanceDays = attendance?.length || 0
         const leaveDays = leaves?.length || 0
 
-        const expectedDays = timeframe === "daily" ? 1 : 5
+        // Calculate expected working days based on department (security staff work all days)
+        const expectedDays = calculateWorkingDays(startDate, now, { code: s.departments?.code, name: s.departments?.name })
         const actualDays = attendanceDays + leaveDays
 
         if (actualDays >= expectedDays) return null

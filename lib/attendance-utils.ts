@@ -1,8 +1,34 @@
 export type DeptInfo = { code?: string | null; name?: string | null } | undefined | null
 
+// Ghana public holidays for 2026
+export const GHANA_HOLIDAYS_2026 = [
+  { date: "2026-01-01", name: "New Year's Day" },
+  { date: "2026-02-23", name: "Founder's Day" },
+  { date: "2026-03-30", name: "Easter Monday" },
+  { date: "2026-05-01", name: "Workers' Day" },
+  { date: "2026-05-14", name: "Ascension Day" },
+  { date: "2026-06-04", name: "Republic Day" },
+  { date: "2026-07-01", name: "Id-ul-Adha" },
+  { date: "2026-07-21", name: "Islamic New Year" },
+  { date: "2026-09-21", name: "Founder's Day" },
+  { date: "2026-09-29", name: "Founders' Day (Observation)" },
+  { date: "2026-10-25", name: "Eid-ul-Mawlid" },
+  { date: "2026-12-25", name: "Christmas Day" },
+  { date: "2026-12-26", name: "Boxing Day" },
+]
+
 export function isWeekend(date: Date = new Date()): boolean {
   const d = date.getDay()
   return d === 0 || d === 6
+}
+
+export function isHoliday(date: Date): boolean {
+  const dateStr = date.toISOString().split("T")[0] // Format: YYYY-MM-DD
+  return GHANA_HOLIDAYS_2026.some((holiday) => holiday.date === dateStr)
+}
+
+export function isWorkingDay(date: Date): boolean {
+  return !isWeekend(date) && !isHoliday(date)
 }
 
 export function isSecurityDept(dept?: DeptInfo): boolean {
@@ -213,4 +239,161 @@ export function getRestrictionReason(restrictionType: string, dept?: DeptInfo, r
     default:
       return "A restriction applies to your attendance action."
   }
+}
+
+// ============================================================================
+// NEW: Comprehensive Working Days Calculation Functions
+// ============================================================================
+
+/**
+ * Calculate the number of working days between two dates.
+ * Working days exclude weekends (Sat, Sun) and public holidays.
+ * Security staff work 24/7 so all days count as working days for them.
+ *
+ * @param startDate - The start date (inclusive)
+ * @param endDate - The end date (inclusive)
+ * @param deptInfo - Department info to check if staff is exempt (e.g., Security)
+ * @returns Number of working days
+ */
+export function calculateWorkingDays(startDate: Date, endDate: Date, deptInfo?: DeptInfo): number {
+  // Security staff work all days (weekends, holidays, etc.)
+  if (isSecurityDept(deptInfo)) {
+    const timeDiff = endDate.getTime() - startDate.getTime()
+    return Math.ceil(timeDiff / (1000 * 60 * 60 * 24)) + 1 // +1 to include both start and end dates
+  }
+
+  // For regular staff, only count Mon-Fri excluding holidays
+  let workingDaysCount = 0
+  const currentDate = new Date(startDate)
+
+  while (currentDate <= endDate) {
+    if (isWorkingDay(currentDate)) {
+      workingDaysCount++
+    }
+    currentDate.setDate(currentDate.getDate() + 1)
+  }
+
+  return workingDaysCount
+}
+
+/**
+ * Calculate expected attendance (total staff-days expected to be present).
+ * For security staff: all employees work all days
+ * For regular staff: only count working days (Mon-Fri, excluding holidays)
+ *
+ * @param startDate - The start date
+ * @param endDate - The end date
+ * @param totalEmployees - Total number of employees in the group/department
+ * @param deptInfo - Department info to check if staff is exempt
+ * @returns Expected number of staff-days
+ */
+export function calculateExpectedAttendance(startDate: Date, endDate: Date, totalEmployees: number = 0, deptInfo?: DeptInfo): number {
+  const workingDays = calculateWorkingDays(startDate, endDate, deptInfo)
+  return totalEmployees * workingDays
+}
+
+/**
+ * Calculate attendance percentage based on actual vs expected attendance.
+ * Properly accounts for weekends, holidays, and department exemptions.
+ *
+ * @param actualAttendance - Number of actual attendance records
+ * @param startDate - The start date of the period
+ * @param endDate - The end date of the period
+ * @param totalEmployees - Total number of employees
+ * @param deptInfo - Department info for exemptions
+ * @returns Attendance percentage (0-100)
+ */
+export function calculateAttendancePercentage(
+  actualAttendance: number,
+  startDate: Date,
+  endDate: Date,
+  totalEmployees: number = 0,
+  deptInfo?: DeptInfo,
+): number {
+  const expectedAttendance = calculateExpectedAttendance(startDate, endDate, totalEmployees, deptInfo)
+
+  if (expectedAttendance === 0) return 0
+
+  const percentage = (actualAttendance / expectedAttendance) * 100
+  return Math.min(100, Math.max(0, Math.round(percentage * 100) / 100)) // Round to 2 decimal places
+}
+
+/**
+ * Get working days breakdown for a date range.
+ * Returns detailed info about weekdays, weekends, holidays, and total working days.
+ *
+ * @param startDate - The start date
+ * @param endDate - The end date
+ * @returns Breakdown object with counts
+ */
+export function getWorkingDaysBreakdown(startDate: Date, endDate: Date) {
+  let weekdays = 0
+  let weekends = 0
+  let holidays = 0
+  let totalDays = 0
+
+  const currentDate = new Date(startDate)
+
+  while (currentDate <= endDate) {
+    totalDays++
+
+    if (isHoliday(currentDate)) {
+      holidays++
+    } else if (isWeekend(currentDate)) {
+      weekends++
+    } else {
+      weekdays++
+    }
+
+    currentDate.setDate(currentDate.getDate() + 1)
+  }
+
+  return {
+    totalDays,
+    weekdays, // Actual working days (excluding holidays)
+    weekends,
+    holidays,
+    workingDays: weekdays, // Alias for clarity
+    totalCalendarDays: totalDays,
+  }
+}
+
+/**
+ * Check if a date range contains any holidays.
+ */
+export function hasHolidaysInRange(startDate: Date, endDate: Date): boolean {
+  const currentDate = new Date(startDate)
+
+  while (currentDate <= endDate) {
+    if (isHoliday(currentDate)) {
+      return true
+    }
+    currentDate.setDate(currentDate.getDate() + 1)
+  }
+
+  return false
+}
+
+/**
+ * Get all holidays within a date range.
+ */
+export function getHolidaysInRange(startDate: Date, endDate: Date) {
+  const holidaysInRange = []
+  const currentDate = new Date(startDate)
+
+  while (currentDate <= endDate) {
+    const dateStr = currentDate.toISOString().split("T")[0]
+    const holiday = GHANA_HOLIDAYS_2026.find((h) => h.date === dateStr)
+
+    if (holiday) {
+      holidaysInRange.push({
+        ...holiday,
+        dateObj: new Date(currentDate),
+      })
+    }
+
+    currentDate.setDate(currentDate.getDate() + 1)
+  }
+
+  return holidaysInRange
 }

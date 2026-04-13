@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { calculateWorkingDays, isSecurityDept } from "@/lib/attendance-utils"
 
 export async function GET(request: Request) {
   try {
@@ -105,10 +106,8 @@ export async function GET(request: Request) {
 
       const hasCheckedOutToday = records.some((r: any) => r.check_out_time !== null)
 
-      let expectedDays = 0
-      if (period === "weekly") expectedDays = 5
-      else if (period === "monthly") expectedDays = Math.floor((today.getDate() / 7) * 5)
-      else expectedDays = Math.floor((new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate() / 7) * 5)
+      // Calculate expected working days using correct logic (excluding weekends and holidays)
+      const expectedDays = calculateWorkingDays(startDate, endDate, { code: staffMember.departments?.code, name: staffMember.departments?.name })
 
       return {
         userId: staffMember.id,

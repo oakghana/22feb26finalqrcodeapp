@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
 import { calculateAttendancePercentage, isDateOnLeave } from "@/lib/analytics/leave-analytics"
+import { calculateWorkingDays, getHolidaysInRange, isSecurityDept } from "@/lib/attendance-utils"
 
 export async function GET(request: NextRequest) {
   try {
@@ -26,24 +27,15 @@ export async function GET(request: NextRequest) {
     const firstDay = new Date(year, month, 1)
     const lastDay = new Date(year, month + 1, 0)
 
-    // Get user profile with leave info
+    // Get user profile with department and leave info
     const { data: userProfile } = await supabase
       .from("user_profiles")
-      .select("leave_status, leave_start_date, leave_end_date")
+      .select("leave_status, leave_start_date, leave_end_date, departments(code, name)")
       .eq("id", user.id)
       .single()
 
-    // Count total working days (excluding weekends)
-    let workingDaysCount = 0
-    const currentDate = new Date(firstDay)
-    while (currentDate <= lastDay) {
-      const dayOfWeek = currentDate.getDay()
-      // Skip weekends (0 = Sunday, 6 = Saturday)
-      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-        workingDaysCount++
-      }
-      currentDate.setDate(currentDate.getDate() + 1)
-    }
+    // Count total working days using utility function (excludes weekends and holidays)
+    const workingDaysCount = calculateWorkingDays(firstDay, lastDay, userProfile?.departments)
 
     // Get attendance records for the month
     const { data: attendanceRecords } = await supabase
@@ -58,16 +50,16 @@ export async function GET(request: NextRequest) {
       attendanceRecords?.map((r) => new Date(r.check_in_time).toISOString().split("T")[0]) || []
     ).size
 
-    // Count leave days in the month
+    // Count leave days in the month (only weekdays, excluding holidays)
     let leaveDays = 0
     if (userProfile?.leave_status === "active" && userProfile?.leave_start_date && userProfile?.leave_end_date) {
       const leaveStart = new Date(userProfile.leave_start_date)
       const leaveEnd = new Date(userProfile.leave_end_date)
+      const currentDate = new Date(firstDay)
 
-      currentDate.setDate(1)
       while (currentDate <= lastDay) {
-        const dayOfWeek = currentDate.getDay()
         // Only count weekdays
+        const dayOfWeek = currentDate.getDay()
         if (dayOfWeek !== 0 && dayOfWeek !== 6) {
           if (isDateOnLeave(currentDate, userProfile.leave_start_date, userProfile.leave_end_date, userProfile.leave_status)) {
             leaveDays++
