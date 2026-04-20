@@ -71,13 +71,13 @@ export function ActiveLocationsCard() {
 
   return (
     <Card className="shadow-sm border-0">
-      <CardHeader>
-        <div className="flex items-center justify-between">
+      <CardHeader className="pb-3 sm:pb-4">
+        <div className="flex items-center justify-between gap-3">
           <div>
-            <CardTitle className="text-lg">Active Locations</CardTitle>
-            <CardDescription className="text-sm">Live check-in/out stats</CardDescription>
+            <CardTitle className="text-base sm:text-lg">Active Locations</CardTitle>
+            <CardDescription className="text-xs sm:text-sm">Live check-in/out stats</CardDescription>
           </div>
-          <MapPin className="h-5 w-5 text-primary" />
+          <MapPin className="h-4 sm:h-5 w-4 sm:w-5 text-primary flex-shrink-0" />
         </div>
       </CardHeader>
       <CardContent>
@@ -91,49 +91,49 @@ export function ActiveLocationsCard() {
         ) : locations.length === 0 ? (
           <div className="text-sm text-muted-foreground">No active locations</div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2 sm:space-y-3">
             {locations.map((loc) => (
-              <div key={loc.id} className="flex items-start justify-between p-3 rounded-md hover:bg-muted/5">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold">{loc.name}</span>
-                    {loc.location_code && <Badge className="ml-2">{loc.location_code}</Badge>}
+              <div key={loc.id} className="flex flex-col sm:flex-row items-start sm:items-start justify-between gap-2 sm:gap-3 p-2 sm:p-3 rounded-md hover:bg-muted/5">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-sm sm:text-base truncate">{loc.name}</span>
+                    {loc.location_code && <Badge className="text-xs">{loc.location_code}</Badge>}
                   </div>
-                  <div className="text-sm text-muted-foreground">
+                  <div className="text-xs sm:text-sm text-muted-foreground mt-1 line-clamp-2">
                     {loc.address || "No address"}
                   </div>
                 </div>
 
-                <div className="text-right text-sm">
-                  <div className="flex items-center gap-3 justify-end">
+                <div className="text-right text-xs sm:text-sm w-full sm:w-auto">
+                  <div className="flex items-center gap-2 sm:gap-3 justify-start sm:justify-end">
                     <div className="flex flex-col">
-                      <span className="font-medium">{loc.today?.currently_checked_in ?? 0}</span>
-                      <span className="text-muted-foreground text-xs">Currently in</span>
+                      <span className="font-medium text-sm">{loc.today?.currently_checked_in ?? 0}</span>
+                      <span className="text-muted-foreground text-xs">In</span>
                     </div>
                     <div className="flex flex-col">
-                      <span className="font-medium">{loc.today?.check_in_count ?? 0}</span>
-                      <span className="text-muted-foreground text-xs">Check-ins</span>
+                      <span className="font-medium text-sm">{loc.today?.check_in_count ?? 0}</span>
+                      <span className="text-muted-foreground text-xs">Ins</span>
                     </div>
                     <div className="flex flex-col">
-                      <span className="font-medium">{loc.today?.check_out_count ?? 0}</span>
-                      <span className="text-muted-foreground text-xs">Check-outs</span>
+                      <span className="font-medium text-sm">{loc.today?.check_out_count ?? 0}</span>
+                      <span className="text-muted-foreground text-xs">Outs</span>
                     </div>
                   </div>
-                  <div className="mt-2 text-muted-foreground text-xs">
+                  <div className="mt-1 text-muted-foreground text-xs space-y-0.5">
                     {loc.today?.last_check_in_time && (
                       <div className="flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        <span>In: {new Date(loc.today.last_check_in_time).toLocaleTimeString()}</span>
+                        <Clock className="h-3 w-3 flex-shrink-0" />
+                        <span className="truncate">In: {new Date(loc.today.last_check_in_time).toLocaleTimeString()}</span>
                       </div>
                     )}
                     {loc.today?.last_check_out_time && (
-                      <div className="flex items-center gap-1 mt-1">
-                        <UserCheck className="h-3 w-3" />
-                        <span>Out: {new Date(loc.today.last_check_out_time).toLocaleTimeString()}</span>
+                      <div className="flex items-center gap-1">
+                        <UserCheck className="h-3 w-3 flex-shrink-0" />
+                        <span className="truncate">Out: {new Date(loc.today.last_check_out_time).toLocaleTimeString()}</span>
                       </div>
                     )}
                     {loc.distance_meters != null && (
-                      <div className="mt-1 text-xs">Distance: {loc.distance_meters} m</div>
+                      <div className="text-xs">Dist: {loc.distance_meters}m</div>
                     )}
                   </div>
                 </div>

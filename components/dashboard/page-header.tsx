@@ -39,19 +39,19 @@ export function PageHeader({
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-start sm:items-center gap-3 w-full sm:w-auto">
           {Icon && (
-            <div className="p-2 bg-primary/10 rounded-lg">
-              <Icon className="h-6 w-6 text-primary" />
+            <div className="p-2 bg-primary/10 rounded-lg flex-shrink-0">
+              <Icon className="h-5 sm:h-6 w-5 sm:w-6 text-primary" />
             </div>
           )}
-          <div>
-            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-heading font-bold text-foreground tracking-tight">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-heading font-bold text-foreground tracking-tight break-words">
               {title}
             </h1>
             {description && (
-              <p className="text-sm sm:text-base lg:text-lg text-muted-foreground font-medium mt-1">
+              <p className="text-xs sm:text-sm md:text-base lg:text-lg text-muted-foreground font-medium mt-1 line-clamp-2">
                 {description}
               </p>
             )}

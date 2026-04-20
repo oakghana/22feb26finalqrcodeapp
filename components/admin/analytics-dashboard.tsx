@@ -164,13 +164,13 @@ export function AnalyticsDashboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-start">
+      <div className="flex flex-col sm:flex-row justify-between items-start gap-4 sm:gap-0">
         <div>
-          <h1 className="text-3xl font-bold text-primary flex items-center gap-2">
-            <BarChart3 className="h-8 w-8" />
+          <h1 className="text-2xl sm:text-3xl font-bold text-primary flex items-center gap-2">
+            <BarChart3 className="h-6 sm:h-8 w-6 sm:w-8" />
             Analytics Dashboard
           </h1>
-          <p className="text-muted-foreground mt-2">
+          <p className="text-sm sm:text-base text-muted-foreground mt-2">
             Real-time insights and predictive analytics for attendance management
           </p>
         </div>
@@ -188,14 +188,14 @@ export function AnalyticsDashboard() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         {kpiCards.map((kpi, index) => (
           <Card key={index} className="shadow-sm border-0 bg-gradient-to-br from-white to-gray-50/50">
-            <CardContent className="p-6">
+            <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">{kpi.title}</p>
-                  <p className="text-2xl font-bold text-foreground">{kpi.value}</p>
+                  <p className="text-xs sm:text-sm font-medium text-muted-foreground">{kpi.title}</p>
+                  <p className="text-xl sm:text-2xl font-bold text-foreground mt-1">{kpi.value}</p>
                   <div className="flex items-center gap-1 mt-1">
                     {kpi.change > 0 ? (
                       <TrendingUp className="h-3 w-3 text-green-600" />
@@ -208,8 +208,8 @@ export function AnalyticsDashboard() {
                     </span>
                   </div>
                 </div>
-                <div className={`p-3 rounded-lg ${kpi.bgColor}`}>
-                  <kpi.icon className={`h-6 w-6 ${kpi.color}`} />
+                <div className={`p-2 sm:p-3 rounded-lg ${kpi.bgColor}`}>
+                  <kpi.icon className={`h-5 sm:h-6 w-5 sm:w-6 ${kpi.color}`} />
                 </div>
               </div>
             </CardContent>
@@ -219,25 +219,25 @@ export function AnalyticsDashboard() {
 
       {/* Predictive Insights */}
       <Card className="shadow-sm border-0 bg-gradient-to-br from-primary/5 to-primary/10">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-primary">
-            <Target className="h-5 w-5" />
+        <CardHeader className="pb-4 sm:pb-6">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg text-primary">
+            <Target className="h-4 sm:h-5 w-4 sm:w-5" />
             Predictive Insights
           </CardTitle>
-          <CardDescription>AI-powered predictions and recommendations</CardDescription>
+          <CardDescription className="text-xs sm:text-sm">AI-powered predictions and recommendations</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="text-center p-4 bg-white/50 rounded-lg">
-              <div className="text-2xl font-bold text-primary mb-1">{data.predictions.nextWeekAttendance}%</div>
-              <div className="text-sm text-muted-foreground">Predicted Next Week Attendance</div>
+          <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
+            <div className="text-center p-3 sm:p-4 bg-white/50 rounded-lg">
+              <div className="text-xl sm:text-2xl font-bold text-primary mb-1">{data.predictions.nextWeekAttendance}%</div>
+              <div className="text-xs sm:text-sm text-muted-foreground">Predicted Next Week Attendance</div>
             </div>
-            <div className="text-center p-4 bg-white/50 rounded-lg">
-              <div className="text-2xl font-bold text-orange-600 mb-1">{data.predictions.riskEmployees}</div>
-              <div className="text-sm text-muted-foreground">At-Risk Employees</div>
+            <div className="text-center p-3 sm:p-4 bg-white/50 rounded-lg">
+              <div className="text-xl sm:text-2xl font-bold text-orange-600 mb-1">{data.predictions.riskEmployees}</div>
+              <div className="text-xs sm:text-sm text-muted-foreground">At-Risk Employees</div>
             </div>
-            <div className="text-center p-4 bg-white/50 rounded-lg">
-              <div className="text-sm font-medium text-green-600 mb-1">Peak Days</div>
+            <div className="text-center p-3 sm:p-4 bg-white/50 rounded-lg">
+              <div className="text-xs sm:text-sm font-medium text-green-600 mb-1">Peak Days</div>
               <div className="text-xs text-muted-foreground">{data.predictions.peakDays.join(", ")}</div>
             </div>
           </div>

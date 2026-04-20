@@ -137,14 +137,14 @@ export default function AttendancePage() {
       </div>
 
       <div className="space-y-3">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-primary/10 rounded-lg">
-              <Clock className="h-6 w-6 text-primary" />
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-start sm:items-center gap-3 w-full">
+            <div className="p-2 bg-primary/10 rounded-lg flex-shrink-0">
+              <Clock className="h-5 sm:h-6 w-5 sm:w-6 text-primary" />
             </div>
-            <div>
-              <h1 className="text-3xl sm:text-4xl font-heading font-bold text-foreground tracking-tight">Attendance</h1>
-              <p className="text-base sm:text-lg text-muted-foreground font-medium mt-1">
+            <div className="flex-1 min-w-0">
+              <h1 className="text-2xl sm:text-3xl md:text-4xl font-heading font-bold text-foreground tracking-tight">Attendance</h1>
+              <p className="text-xs sm:text-sm md:text-base text-muted-foreground font-medium mt-1 line-clamp-2">
                 Record your daily attendance and view your history at QCC locations
               </p>
             </div>

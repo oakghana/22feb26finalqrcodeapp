@@ -135,7 +135,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     <div className="min-h-screen bg-gradient-to-br from-background via-background/98 to-muted/10">
       <Sidebar user={user} profile={profile} isCollapsed={isCollapsed} setIsCollapsed={setIsCollapsed} />
       <div className={`transition-all duration-300 ease-in-out ${isCollapsed ? 'lg:pl-20' : 'lg:pl-64'}`}>
-        <main className="p-6 pb-24 lg:p-12 lg:pb-12 max-w-7xl mx-auto">
+        <main className="p-4 sm:p-6 md:p-8 pb-24 sm:pb-28 lg:p-12 lg:pb-12 w-full lg:max-w-7xl lg:mx-auto">
           <div className="relative">
             {children}
             <div className="absolute inset-0 bg-gradient-to-br from-primary/[0.02] via-transparent to-accent/[0.02] pointer-events-none -z-10 rounded-3xl" />
