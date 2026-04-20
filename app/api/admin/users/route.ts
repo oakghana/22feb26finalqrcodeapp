@@ -59,39 +59,57 @@ export async function GET(request: NextRequest) {
 
     console.log("[v0] Users API: Permission check passed", profile.role)
 
-    const { data: users, error } = await supabase
-      .from("user_profiles")
-      .select(`
-        id,
-        first_name,
-        last_name,
-        email,
-        employee_id,
-        role,
-        is_active
-      `)
-      .eq("is_active", true)
-      .order("first_name")
+    // Fetch all users - Supabase returns max 1000 per query, so we need to fetch in batches
+    let allUsers: any[] = []
+    let pageNum = 0
+    const pageSize = 1000
 
-    if (error) {
-      console.error("[v0] Users fetch error:", error)
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Failed to fetch users",
-          details: error.message,
-        },
-        {
-          status: 500,
-          headers: {
-            "Content-Type": "application/json",
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            Pragma: "no-cache",
-            Expires: "0",
-          },
-        },
-      )
+    try {
+      while (true) {
+        const from = pageNum * pageSize
+        const to = from + pageSize - 1
+
+        const { data: users, error } = await supabase
+          .from("user_profiles")
+          .select(`
+            id,
+            first_name,
+            last_name,
+            email,
+            employee_id,
+            role,
+            is_active
+          `)
+          .eq("is_active", true)
+          .order("first_name")
+          .range(from, to)
+
+        if (error) {
+          console.error("[v0] Users fetch error on page", pageNum, ":", error)
+          throw error
+        }
+
+        if (!users || users.length === 0) {
+          console.log("[v0] Users API: Fetched all users - total:", allUsers.length)
+          break
+        }
+
+        allUsers = [...allUsers, ...users]
+        console.log("[v0] Users API: Fetched batch", pageNum, "- count:", users.length, "- total so far:", allUsers.length)
+
+        if (users.length < pageSize) {
+          console.log("[v0] Users API: Last batch - fetching complete with total:", allUsers.length)
+          break
+        }
+
+        pageNum++
+      }
+    } catch (error) {
+      console.error("[v0] Users fetch batch error:", error)
+      throw error
     }
+
+    const users = allUsers
 
     let filteredUsers = users || []
     if (profile.role === "it-admin") {

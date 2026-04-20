@@ -127,8 +127,10 @@ export function PasswordManagement({ userId, userEmail, isAdmin = false }: Passw
     if (user) {
       setSelectedUserId(userId)
       setSelectedUserEmail(user.email)
-      console.log("[v0] Password Management: Selected user:", user.email)
+      console.log("[v0] Password Management: Selected user:", user.email, "from", users.length, "total users")
       setError(null) // Clear any previous errors
+    } else {
+      console.warn("[v0] Password Management: User not found:", userId, "Available users:", users.map(u => u.email))
     }
   }
 
