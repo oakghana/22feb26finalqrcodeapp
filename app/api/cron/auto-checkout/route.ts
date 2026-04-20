@@ -121,6 +121,23 @@ export async function POST(request: NextRequest) {
     if (eligibleRecords && eligibleRecords.length > 0) {
       for (const record of eligibleRecords) {
         try {
+          // Safety check: ensure user hasn't already manually checked out
+          if (record.check_out_time) {
+            console.log(`[v0] User ${record.user_id} already has checkout record, skipping`)
+            results.push({
+              user_id: record.user_id,
+              user_email: record.user_profiles.email,
+              check_in_time: record.check_in_time,
+              check_out_time: record.check_out_time,
+              hours_worked: 0,
+              was_in_geofence: false,
+              checkout_reason: "already_checked_out",
+              success: false,
+              error: "User already checked out manually",
+            })
+            continue
+          }
+
           const checkInTime = new Date(record.check_in_time)
           const hoursWorked = (checkoutTime.getTime() - checkInTime.getTime()) / (1000 * 60 * 60)
 
@@ -156,6 +173,29 @@ export async function POST(request: NextRequest) {
               checkout_reason: "still_in_location",
               success: false,
               error: "User is still within geofence",
+            })
+            continue
+          }
+
+          // Check if already auto-checked out (idempotency check)
+          const { data: existingCheckout } = await supabase
+            .from("auto_checkout_logs")
+            .select("id")
+            .eq("attendance_record_id", record.id)
+            .limit(1)
+
+          if (existingCheckout && existingCheckout.length > 0) {
+            console.log(`[v0] User ${record.user_id} already has auto-checkout log, skipping`)
+            results.push({
+              user_id: record.user_id,
+              user_email: record.user_profiles.email,
+              check_in_time: record.check_in_time,
+              check_out_time: checkoutTime.toISOString(),
+              hours_worked: Math.round(hoursWorked * 100) / 100,
+              was_in_geofence: false,
+              checkout_reason: "duplicate_auto_checkout",
+              success: false,
+              error: "Already auto-checked out in previous cycle",
             })
             continue
           }
