@@ -108,10 +108,13 @@ export function StaffManagement() {
     try {
       console.log("[v0] Fetching staff with filters:", { searchTerm, selectedDepartment, selectedRole, page })
       const params = new URLSearchParams()
-      if (searchTerm) params.append("search", searchTerm)
+      if (searchTerm) {
+        params.append("search", searchTerm)
+        params.append("fullSearch", "true") // Enable full search across all 2000+ users when searching
+      }
       if (selectedDepartment !== "all") params.append("department", selectedDepartment)
       if (selectedRole !== "all") params.append("role", selectedRole)
-      params.append("page", String(page))
+      params.append("page", String(searchTerm ? 1 : page)) // Always reset to page 1 when searching
       params.append("limit", String(limit))
 
       const response = await fetch(`/api/admin/staff?${params}`)

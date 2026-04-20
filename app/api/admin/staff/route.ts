@@ -72,9 +72,10 @@ export async function GET(request: NextRequest) {
     const sortBy = urlParams.get("sortBy") || "created_at"
     const sortOrder = urlParams.get("sortOrder") || "desc"
     const page = parseInt(urlParams.get("page") || "1", 10)
-    const limit = Math.min(parseInt(urlParams.get("limit") || "50", 10), 200) // sane max
+    const isFullSearch = urlParams.get("fullSearch") === "true" // When searching, get all results up to 5000
+    const limit = isFullSearch ? 5000 : Math.min(parseInt(urlParams.get("limit") || "50", 10), 200) // sane max for pagination, but 5000 for full search
 
-    console.log("[v0] Staff API - Filters:", { searchTerm, departmentFilter, roleFilter, sortBy, sortOrder, page, limit })
+    console.log("[v0] Staff API - Filters:", { searchTerm, departmentFilter, roleFilter, sortBy, sortOrder, page, limit, isFullSearch })
 
     // Fetch the requesting user's profile to check role and location
     const { data: requestingProfile } = await supabase
@@ -130,7 +131,9 @@ export async function GET(request: NextRequest) {
     const ascending = sortOrder === "asc"
 
     // Apply ordering and pagination
-    const from = (page - 1) * limit
+    // For full search, don't paginate - get all results up to limit
+    // For regular pagination, apply page logic
+    const from = isFullSearch ? 0 : (page - 1) * limit
     const to = from + limit - 1
     query = query.order(orderColumn, { ascending }).range(from, to)
 
