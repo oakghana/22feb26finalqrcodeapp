@@ -202,14 +202,14 @@ export function LeaveManagementClient({
   return (
     <div className="space-y-8">
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Calendar className="h-6 w-6 text-blue-600" />
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="p-2 bg-blue-100 rounded-lg flex-shrink-0">
+                <Calendar className="h-5 sm:h-6 w-5 sm:w-6 text-blue-600" />
               </div>
-              <div>
-                <h1 className="text-4xl font-heading font-bold text-foreground tracking-tight">Leave Management</h1>
-                <p className="text-lg text-muted-foreground font-medium mt-1">
+              <div className="flex-1 min-w-0">
+                <h1 className="text-2xl sm:text-3xl md:text-4xl font-heading font-bold text-foreground tracking-tight">Leave Management</h1>
+                <p className="text-xs sm:text-sm md:text-base text-muted-foreground font-medium mt-1">
                   Register your Leave in the app
                 </p>
               </div>
@@ -218,9 +218,9 @@ export function LeaveManagementClient({
             {allowedRequestRoles.includes(userRole || "") && (
               <Dialog open={newLeaveOpen} onOpenChange={setNewLeaveOpen}>
                 <DialogTrigger asChild>
-                  <Button className="gap-2">
+                  <Button className="gap-2 w-full sm:w-auto">
                     <Plus className="h-4 w-4" />
-                    Request Leave
+                    <span className="sm:inline">Request Leave</span>
                   </Button>
                 </DialogTrigger>
                 <DialogContent>

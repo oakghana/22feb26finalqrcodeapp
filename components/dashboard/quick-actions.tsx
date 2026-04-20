@@ -44,38 +44,38 @@ export function QuickActions() {
 
   return (
     <Card className="bg-slate-900 text-white backdrop-blur-xl border-slate-800/40 shadow-2xl">
-      <CardHeader className="pb-6">
-        <CardTitle className="text-xl font-bold flex items-center gap-3">
+      <CardHeader className="pb-4 sm:pb-6">
+        <CardTitle className="text-lg sm:text-xl font-bold flex items-center gap-3">
           <div className="p-2 rounded-xl bg-slate-800/60 border border-slate-700/50">
-            <Zap className="h-5 w-5 text-white" />
+            <Zap className="h-4 sm:h-5 w-4 sm:w-5 text-white" />
           </div>
           Quick Actions
         </CardTitle>
-        <CardDescription className="text-lg">Access your most frequently used features</CardDescription>
+        <CardDescription className="text-sm sm:text-base">Access your most frequently used features</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3 sm:space-y-4">
         {actions.map((action) => {
           const Icon = action.icon
           return (
             <Button
               key={action.href}
               asChild
-              className={`h-auto w-full flex items-center gap-6 p-6 bg-slate-800/60 border border-slate-700/40 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 hover:scale-[1.02] touch-manipulation group relative overflow-hidden`}
+              className={`h-auto w-full flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-6 p-4 sm:p-6 bg-slate-800/60 border border-slate-700/40 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 hover:scale-[1.02] touch-manipulation group relative overflow-hidden`}
               variant="outline"
             >
               <Link href={action.href}>
-                <div className={`flex-shrink-0 p-4 rounded-2xl shadow-sm transition-all duration-300 group-hover:shadow-md group-hover:scale-110 bg-slate-700/60`}>
+                <div className={`flex-shrink-0 p-3 sm:p-4 rounded-2xl shadow-sm transition-all duration-300 group-hover:shadow-md group-hover:scale-110 bg-slate-700/60`}>
                   <Icon
-                    className={`h-6 w-6 text-white transition-transform duration-300 group-hover:rotate-3`}
+                    className={`h-5 sm:h-6 w-5 sm:w-6 text-white transition-transform duration-300 group-hover:rotate-3`}
                   />
                 </div>
 
-                <div className="flex-1 text-left space-y-1">
-                  <div className="font-bold text-white text-lg flex items-center gap-2">
+                <div className="flex-1 text-left space-y-1 w-full">
+                  <div className="font-bold text-white text-base sm:text-lg flex items-center gap-2">
                     {action.title}
                     <ArrowRight className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-all duration-300 group-hover:translate-x-1 text-white" />
                   </div>
-                  <div className="text-sm text-white/80 font-medium leading-relaxed">{action.description}</div>
+                  <div className="text-xs sm:text-sm text-white/80 font-medium leading-relaxed">{action.description}</div>
                 </div>
 
                 <div className="absolute inset-0 bg-gradient-to-r from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />

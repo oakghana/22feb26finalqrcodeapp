@@ -21,11 +21,12 @@ export default async function UserManagementPage() {
     redirect("/dashboard")
   }
 
-  // Fetch unified user data
+  // Fetch unified user data - fetch all users for searching
   const { data: users, error: usersError } = await supabase
     .from("unified_user_management")
     .select("*")
     .order("profile_created", { ascending: false })
+    .limit(5000) // Ensure we can fetch all 2000+ users
 
   // Fetch departments for user creation
   const { data: departments } = await supabase

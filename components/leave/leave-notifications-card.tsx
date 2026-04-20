@@ -133,14 +133,14 @@ export function LeaveNotificationsCard() {
   if (loading) {
     return (
       <Card className="shadow-lg border-0 bg-gradient-to-br from-card via-card/95 to-card/90">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-primary" />
+        <CardHeader className="pb-3 sm:pb-4">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <Calendar className="h-4 sm:h-5 w-4 sm:w-5 text-primary" />
             Leave Notifications
           </CardTitle>
         </CardHeader>
-        <CardContent className="flex items-center justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        <CardContent className="flex items-center justify-center py-8 sm:py-12">
+          <Loader2 className="h-5 sm:h-6 w-5 sm:w-6 animate-spin text-primary" />
         </CardContent>
       </Card>
     )
@@ -149,20 +149,20 @@ export function LeaveNotificationsCard() {
   if (notifications.length === 0) {
     return (
       <Card className="shadow-lg border-0 bg-gradient-to-br from-card via-card/95 to-card/90">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-primary" />
+        <CardHeader className="pb-3 sm:pb-4">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <Calendar className="h-4 sm:h-5 w-4 sm:w-5 text-primary" />
             Leave Notifications
           </CardTitle>
-          <CardDescription>No pending leave requests</CardDescription>
+          <CardDescription className="text-xs sm:text-sm">No pending leave requests</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="text-center py-12">
-            <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-              <CheckCircle2 className="h-8 w-8 text-primary" />
+          <div className="text-center py-8 sm:py-12">
+            <div className="w-12 sm:w-16 h-12 sm:h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle2 className="h-6 sm:h-8 w-6 sm:w-8 text-primary" />
             </div>
-            <p className="text-lg font-medium text-muted-foreground">All caught up!</p>
-            <p className="text-sm text-muted-foreground mt-2">No pending leave notifications at this time.</p>
+            <p className="text-base sm:text-lg font-medium text-muted-foreground">All caught up!</p>
+            <p className="text-xs sm:text-sm text-muted-foreground mt-2">No pending leave notifications at this time.</p>
           </div>
         </CardContent>
       </Card>
@@ -171,11 +171,11 @@ export function LeaveNotificationsCard() {
 
   return (
     <Card className="shadow-lg border-0 bg-gradient-to-br from-card via-card/95 to-card/90">
-      <CardHeader>
-        <div className="flex items-center justify-between">
+      <CardHeader className="pb-3 sm:pb-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div>
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-primary" />
+            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <Calendar className="h-4 sm:h-5 w-4 sm:w-5 text-primary" />
               Leave Notifications
             </CardTitle>
             <CardDescription>

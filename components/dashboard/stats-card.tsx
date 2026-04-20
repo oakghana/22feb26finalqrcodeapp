@@ -39,18 +39,18 @@ export function StatsCard({ title, value, description, icon: Icon, variant = "de
 
   return (
     <Card className={`shadow-xl hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 hover:scale-[1.02] border backdrop-blur-sm ${variantStyles[variant]} ${className || ""} group cursor-pointer`}>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-        <CardTitle className="text-sm font-semibold text-slate-600 dark:text-slate-300 tracking-wide uppercase">{title}</CardTitle>
-        <div className={`p-3 rounded-2xl shadow-lg transition-all duration-300 group-hover:shadow-xl group-hover:scale-110 ${iconBgStyles[variant]}`}>
-          <Icon className={`h-6 w-6 transition-all duration-300 ${iconStyles[variant]}`} />
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3 sm:pb-4">
+        <CardTitle className="text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 tracking-wide uppercase">{title}</CardTitle>
+        <div className={`p-2 sm:p-3 rounded-2xl shadow-lg transition-all duration-300 group-hover:shadow-xl group-hover:scale-110 ${iconBgStyles[variant]}`}>
+          <Icon className={`h-5 sm:h-6 w-5 sm:w-6 transition-all duration-300 ${iconStyles[variant]}`} />
         </div>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="text-2xl lg:text-3xl font-bold text-slate-900 dark:text-white group-hover:scale-105 transition-transform duration-300">
+      <CardContent className="space-y-2 sm:space-y-3">
+        <div className="text-xl sm:text-2xl lg:text-3xl font-bold text-slate-900 dark:text-white group-hover:scale-105 transition-transform duration-300">
           {value}
         </div>
         {description && (
-          <p className="text-sm text-slate-600 dark:text-slate-400 font-medium">
+          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 font-medium">
             {description}
           </p>
         )}
