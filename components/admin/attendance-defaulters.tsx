@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { AlertCircle, Send, Users, Calendar, MapPin } from "lucide-react"
+import { AlertCircle, Send, Users, Calendar, MapPin, ChevronLeft, ChevronRight } from "lucide-react"
 import Image from "next/image"
 
 interface DefaultingStaff {
@@ -41,6 +41,7 @@ interface AttendanceDefaultersProps {
 export function AttendanceDefaulters({ userRole, departmentId }: AttendanceDefaultersProps) {
   const [loading, setLoading] = useState(true)
   const [defaulters, setDefaulters] = useState<DefaultingStaff[]>([])
+  const [totalCount, setTotalCount] = useState(0)
   const [selectedStaff, setSelectedStaff] = useState<string[]>([])
   const [warningMessage, setWarningMessage] = useState("")
   const [sendingWarning, setSendingWarning] = useState(false)
@@ -52,38 +53,38 @@ export function AttendanceDefaulters({ userRole, departmentId }: AttendanceDefau
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>([])
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([])
   const [showWarningDialog, setShowWarningDialog] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 10
 
   useEffect(() => {
     fetchDefaulters()
     fetchFilters()
-  }, [timeframe, departmentFilter, locationFilter])
+  }, [timeframe, departmentFilter, locationFilter, currentPage])
 
   const fetchDefaulters = async () => {
     setLoading(true)
-    setError(null) // Clear previous errors
-    console.log("[v0] Fetching defaulters with params:", { timeframe, departmentFilter, locationFilter })
+    setError(null)
     try {
+      const offset = (currentPage - 1) * itemsPerPage
       const params = new URLSearchParams({
         timeframe,
+        offset: offset.toString(),
+        limit: itemsPerPage.toString(),
         ...(departmentFilter !== "all" && { department_id: departmentFilter }),
         ...(locationFilter !== "all" && { location_id: locationFilter }),
       })
 
-      console.log("[v0] Fetching URL:", `/api/admin/attendance-defaulters?${params}`)
       const response = await fetch(`/api/admin/attendance-defaulters?${params}`)
-      console.log("[v0] Response status:", response.status)
 
       if (!response.ok) {
         const errorText = await response.text()
-        console.error("[v0] Error response:", errorText)
         throw new Error(`Failed to fetch defaulters: ${errorText}`)
       }
 
       const data = await response.json()
-      console.log("[v0] Defaulters data:", data)
       setDefaulters(data.defaulters || [])
+      setTotalCount(data.total || 0)
     } catch (err) {
-      console.error("[v0] Fetch error:", err)
       setError(err instanceof Error ? err.message : "Failed to load defaulters")
     } finally {
       setLoading(false)
@@ -91,30 +92,20 @@ export function AttendanceDefaulters({ userRole, departmentId }: AttendanceDefau
   }
 
   const fetchFilters = async () => {
-    console.log("[v0] Fetching filters (departments and locations)")
     try {
       const [deptRes, locRes] = await Promise.all([fetch("/api/admin/departments"), fetch("/api/admin/locations")])
 
-      console.log("[v0] Departments API status:", deptRes.status)
-      console.log("[v0] Locations API status:", locRes.status)
-
       if (deptRes.ok) {
         const deptData = await deptRes.json()
-        console.log("[v0] Departments data:", deptData)
         setDepartments(Array.isArray(deptData) ? deptData : deptData.data || deptData.departments || [])
-      } else {
-        console.error("[v0] Departments API error:", await deptRes.text())
       }
 
       if (locRes.ok) {
         const locData = await locRes.json()
-        console.log("[v0] Locations data:", locData)
         setLocations(Array.isArray(locData) ? locData : locData.data || locData.locations || [])
-      } else {
-        console.error("[v0] Locations API error:", await locRes.text())
       }
     } catch (err) {
-      console.error("[v0] Error fetching filters:", err)
+      // Silently fail - filters are optional
     }
   }
 
@@ -128,9 +119,6 @@ export function AttendanceDefaulters({ userRole, departmentId }: AttendanceDefau
       setError("Please enter a warning message")
       return
     }
-
-    console.log("[v0] Sending warnings to:", selectedStaff.length, "staff members")
-    console.log("[v0] Warning message length:", warningMessage.length)
 
     setSendingWarning(true)
     setError(null)
@@ -146,8 +134,6 @@ export function AttendanceDefaulters({ userRole, departmentId }: AttendanceDefau
         }),
       })
 
-      console.log("[v0] Send warnings response status:", response.status)
-
       if (!response.ok) {
         let errorMsg = "Failed to send warnings"
         const contentType = response.headers.get("content-type") || ""
@@ -161,19 +147,16 @@ export function AttendanceDefaulters({ userRole, departmentId }: AttendanceDefau
         } else {
           errorMsg = await response.text()
         }
-        console.error("[v0] Send warnings error:", errorMsg)
         throw new Error(errorMsg)
       }
 
       const data = await response.json()
-      console.log("[v0] Warnings sent successfully:", data)
       setSuccess(`Successfully sent warning to ${data.sent} staff member(s)`)
       setSelectedStaff([])
       setWarningMessage("")
       setShowWarningDialog(false)
       fetchDefaulters()
     } catch (err) {
-      console.error("[v0] Send warning error:", err)
       setError(err instanceof Error ? err.message : "Failed to send warnings")
     } finally {
       setSendingWarning(false)
@@ -328,6 +311,36 @@ ${senderLabel}`
           </div>
         </CardContent>
       </Card>
+
+      <div className="flex items-center justify-between bg-muted/50 p-4 rounded-lg border">
+        <div className="text-sm text-muted-foreground">
+          Showing {defaulters.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0}-
+          {Math.min(currentPage * itemsPerPage, totalCount)} of {totalCount} defaulters
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            disabled={currentPage === 1 || loading}
+          >
+            <ChevronLeft className="h-4 w-4 mr-1" />
+            Previous
+          </Button>
+          <div className="text-sm font-medium px-2">
+            Page {currentPage} of {Math.ceil(totalCount / itemsPerPage) || 1}
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setCurrentPage((p) => p + 1)}
+            disabled={currentPage >= Math.ceil(totalCount / itemsPerPage) || loading}
+          >
+            Next
+            <ChevronRight className="h-4 w-4 ml-1" />
+          </Button>
+        </div>
+      </div>
 
       <Tabs defaultValue="no_check_in" className="space-y-4">
         <TabsList className="grid w-full grid-cols-2">
