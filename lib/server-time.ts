@@ -1,7 +1,7 @@
 /**
- * Server Time Utility
- * Provides Ghana timezone (GMT/UTC+0) server time to prevent device clock manipulation
- * Syncs client with server and maintains time offset for accurate attendance tracking
+ * Server Time Utility - PURE SERVER TIME (No Device Time Dependency)
+ * All time operations use ONLY the server as the source of truth
+ * Zero reliance on device clock - even if device time is wrong, app time stays correct
  */
 
 import * as React from "react"
@@ -12,10 +12,11 @@ export interface ServerTimeData {
   timezone: "GMT" // Ghana timezone
 }
 
-// Cache for server time sync
-let timeOffset: number | null = null
-let lastSyncTime: number | null = null
-const SYNC_INTERVAL = 5 * 60 * 1000 // Resync every 5 minutes
+// Cache for server time - stores the last fetched server timestamp and when we fetched it
+let cachedServerTime: Date | null = null
+let lastFetchTime: number | null = null
+const CACHE_DURATION = 1000 // Keep cache for 1 second, then refetch
+const FETCH_TIMEOUT = 5000 // 5 second timeout for fetch
 
 /**
  * Get current Ghana server time (for use in API routes - server-side only)
@@ -37,13 +38,20 @@ export function getGhanaServerTimeISO(): string {
 /**
  * Fetch Ghana server time from API endpoint
  * This should be called from client-side code to get the authoritative server time
+ * NO device time dependency - purely server-based
  */
 async function fetchServerTime(): Promise<ServerTimeData> {
   try {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT)
+
     const response = await fetch("/api/server-time", {
       method: "GET",
       cache: "no-store",
+      signal: controller.signal,
     })
+
+    clearTimeout(timeoutId)
 
     if (!response.ok) {
       throw new Error(`Failed to fetch server time: ${response.status}`)
@@ -57,65 +65,49 @@ async function fetchServerTime(): Promise<ServerTimeData> {
 }
 
 /**
- * Sync client time with server and calculate offset
- * Should be called on app initialization and periodically
+ * Get the current Ghana server time
+ * This function handles caching and fetching from the server
+ * Returns the pure server time with NO device time calculations
  */
-export async function syncServerTime(): Promise<ServerTimeData> {
+export async function getServerTime(): Promise<Date> {
   try {
+    // Check if we have a recent cache
+    if (cachedServerTime && lastFetchTime && Date.now() - lastFetchTime < CACHE_DURATION) {
+      // Return cached server time (cache is valid)
+      const elapsedMs = Date.now() - lastFetchTime
+      return new Date(cachedServerTime.getTime() + elapsedMs)
+    }
+
+    // Fetch fresh server time from the API
     const serverData = await fetchServerTime()
+    cachedServerTime = new Date(serverData.timestamp)
+    lastFetchTime = Date.now()
 
-    // Calculate offset between server time and device time
-    const deviceTime = Date.now()
-    const serverTimeMs = new Date(serverData.timestamp).getTime()
-    timeOffset = serverTimeMs - deviceTime
+    console.log("[v0] Server time fetched:", serverData.timestamp)
 
-    lastSyncTime = Date.now()
-
-    console.log(
-      "[v0] Server time synced. Offset:",
-      timeOffset,
-      "ms. Server time:",
-      serverData.timestamp
-    )
-
-    return serverData
+    return new Date(cachedServerTime)
   } catch (error) {
-    console.error("[v0] Failed to sync server time:", error)
+    console.error("[v0] Failed to get server time, using cached value if available")
+    if (cachedServerTime) {
+      const elapsedMs = lastFetchTime ? Date.now() - lastFetchTime : 0
+      return new Date(cachedServerTime.getTime() + elapsedMs)
+    }
     throw error
   }
 }
 
 /**
- * Get current Ghana time (client-side, uses synced offset)
- * Returns a Date object adjusted by the server offset
+ * Get current Ghana time as ISO string (server-based, no device time)
  */
-export function getGhanaTime(): Date {
-  if (timeOffset === null) {
-    console.warn("[v0] Server time not synced yet, using device time")
-    return new Date()
-  }
-
-  return new Date(Date.now() + timeOffset)
+export async function getServerTimeISO(): Promise<string> {
+  const time = await getServerTime()
+  return time.toISOString()
 }
 
 /**
- * Get current Ghana time as ISO string
- */
-export function getGhanaTimeISO(): string {
-  return getGhanaTime().toISOString()
-}
-
-/**
- * Check if server time needs to be resynced
- */
-export function needsResync(): boolean {
-  if (lastSyncTime === null) return true
-  return Date.now() - lastSyncTime > SYNC_INTERVAL
-}
-
-/**
- * React hook for using Ghana server time
- * Automatically syncs on mount and periodically
+ * React hook for using Ghana server time (pure server-based)
+ * Automatically fetches from server and updates every second
+ * ZERO device time dependency
  */
 export function useServerTime() {
   const [ghanaTime, setGhanaTime] = React.useState<Date>(new Date())
@@ -123,38 +115,42 @@ export function useServerTime() {
   const [error, setError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
-    let syncTimer: NodeJS.Timeout
-    let updateTimer: NodeJS.Timeout
+    let updateInterval: NodeJS.Timeout
+    let fetchInterval: NodeJS.Timeout
 
-    const performSync = async () => {
+    const fetchAndUpdate = async () => {
       try {
-        if (needsResync()) {
-          await syncServerTime()
-        }
+        const serverTime = await getServerTime()
+        setGhanaTime(serverTime)
         setIsSynced(true)
         setError(null)
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to sync server time")
+        setError(err instanceof Error ? err.message : "Failed to fetch server time")
         setIsSynced(false)
       }
     }
 
-    const updateTime = () => {
-      setGhanaTime(getGhanaTime())
-    }
+    // Initial fetch
+    fetchAndUpdate()
 
-    // Initial sync
-    performSync()
+    // Update display every second (visual tick)
+    updateInterval = setInterval(() => {
+      try {
+        if (cachedServerTime && lastFetchTime) {
+          const elapsedMs = Date.now() - lastFetchTime
+          setGhanaTime(new Date(cachedServerTime.getTime() + elapsedMs))
+        }
+      } catch (err) {
+        console.error("[v0] Error updating time:", err)
+      }
+    }, 1000)
 
-    // Update time every second
-    updateTimer = setInterval(updateTime, 1000)
-
-    // Resync periodically
-    syncTimer = setInterval(performSync, SYNC_INTERVAL)
+    // Refetch from server every 30 seconds to stay in sync
+    fetchInterval = setInterval(fetchAndUpdate, 30 * 1000)
 
     return () => {
-      clearInterval(updateTimer)
-      clearInterval(syncTimer)
+      clearInterval(updateInterval)
+      clearInterval(fetchInterval)
     }
   }, [])
 
@@ -162,12 +158,16 @@ export function useServerTime() {
     ghanaTime,
     isSynced,
     error,
-    resync: syncServerTime,
+    refetch: async () => {
+      try {
+        const serverTime = await getServerTime()
+        setGhanaTime(serverTime)
+        setIsSynced(true)
+        setError(null)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to fetch server time")
+        setIsSynced(false)
+      }
+    },
   }
 }
-
-/**
- * Export Ghana time getters for use in server-side APIs
- * These should be imported and used in /app/api routes
- */
-export { getGhanaServerTime as getServerTime }
