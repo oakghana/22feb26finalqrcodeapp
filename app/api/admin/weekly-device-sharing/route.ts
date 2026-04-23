@@ -2,6 +2,19 @@ import { createClient } from "@/lib/supabase/server"
 import { type NextRequest, NextResponse } from "next/server"
 import { getGhanaServerTime, getGhanaServerTimeISO } from "@/lib/server-time"
 
+// Helper: Calculate distance between two GPS coordinates (Haversine formula, returns meters)
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180
+  const R = 6371e3 // Earth's radius in meters
+  const φ1 = toRad(lat1)
+  const φ2 = toRad(lat2)
+  const Δφ = toRad(lat2 - lat1)
+  const Δλ = toRad(lon2 - lon1)
+  const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return R * c
+}
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -38,12 +51,10 @@ export async function GET(request: NextRequest) {
     const filterStartDate = startDate ? new Date(startDate) : defaultStartDate
     const filterEndDate = endDate ? new Date(endDate) : getGhanaServerTime()
 
-    // CRITICAL FIX: Only fetch sessions that have a real device_id (NOT NULL, NOT empty).
-    // We never fall back to IP address grouping — that caused Abban (Eastern) and
-    // Arthur (Central) to appear as "sharing" when they share the same ISP/CGNAT IP.
+    // Fetch device sessions with location data
     const { data: deviceSessions, error: sessionsError } = await supabase
       .from("device_sessions")
-      .select("device_id, ip_address, user_id, created_at")
+      .select("device_id, user_id, created_at, location_id, location_name, latitude, longitude")
       .not("device_id", "is", null)
       .neq("device_id", "")
       .gte("created_at", filterStartDate.toISOString())
@@ -82,26 +93,25 @@ export async function GET(request: NextRequest) {
 
     const profileMap = new Map(userProfiles?.map((p) => [p.id, p]) || [])
 
-    // Group ONLY by device_id — never by IP address
+    // Group by device_id and analyze locations
     const deviceMap = new Map<
       string,
       {
         device_id: string
-        ip_address: string | null
-        users: Set<string>
-        userDetails: Array<{
+        sessions: Array<{
           user_id: string
           first_name: string
           last_name: string
           email: string
-          department_name: string
-          last_used: string
+          location_name: string | null
+          latitude: number | null
+          longitude: number | null
+          created_at: string
         }>
       }
     >()
 
     for (const session of deviceSessions) {
-      // Strict: skip sessions without a valid device_id (belt-and-suspenders)
       if (!session.device_id || session.device_id.trim() === "") continue
 
       const userProfile = profileMap.get(session.user_id)
@@ -112,53 +122,120 @@ export async function GET(request: NextRequest) {
         if (userProfile.department_id !== profile.department_id) continue
       }
 
-      const key = session.device_id // ONLY group by device_id
-
+      const key = session.device_id
       if (!deviceMap.has(key)) {
         deviceMap.set(key, {
           device_id: session.device_id,
-          ip_address: session.ip_address,
-          users: new Set(),
-          userDetails: [],
+          sessions: [],
         })
       }
 
-      const device = deviceMap.get(key)!
-      if (!device.users.has(session.user_id)) {
-        device.users.add(session.user_id)
-        device.userDetails.push({
-          user_id: session.user_id,
-          first_name: userProfile.first_name,
-          last_name: userProfile.last_name,
-          email: userProfile.email,
-          department_name: "Unknown",
-          last_used: session.created_at,
-        })
-      }
+      deviceMap.get(key)!.sessions.push({
+        user_id: session.user_id,
+        first_name: userProfile.first_name,
+        last_name: userProfile.last_name,
+        email: userProfile.email,
+        location_name: session.location_name,
+        latitude: session.latitude,
+        longitude: session.longitude,
+        created_at: session.created_at,
+      })
     }
 
-    // Only flag a device if 2+ DIFFERENT users used the exact same device_id
-    const sharedDevices = Array.from(deviceMap.values())
-      .filter((device) => device.users.size > 1)
-      .map((device) => ({
-        device_id: device.device_id,
-        ip_address: device.ip_address,
-        user_count: device.users.size,
-        risk_level:
-          device.users.size >= 5 ? "critical" : device.users.size >= 3 ? "high" : "medium",
-        users: device.userDetails,
-        first_detected: device.userDetails.reduce(
-          (earliest, u) => (u.last_used < earliest ? u.last_used : earliest),
-          device.userDetails[0].last_used
-        ),
-        last_detected: device.userDetails.reduce(
-          (latest, u) => (u.last_used > latest ? u.last_used : latest),
-          device.userDetails[0].last_used
-        ),
-      }))
-      .sort((a, b) => b.user_count - a.user_count)
+    // Analyze devices for suspicious sharing patterns
+    const suspiciousDevices = Array.from(deviceMap.values())
+      .map((device) => {
+        const uniqueUsers = new Set(device.sessions.map((s) => s.user_id))
 
-    return NextResponse.json({ data: sharedDevices })
+        // Only flag if 2+ different users used the same device
+        if (uniqueUsers.size < 2) return null
+
+        // Analyze location patterns
+        const locations = device.sessions.map((s) => ({
+          location_name: s.location_name || "Unknown",
+          latitude: s.latitude,
+          longitude: s.longitude,
+          user_id: s.user_id,
+          timestamp: s.created_at,
+        }))
+
+        // Check for suspicious location changes (same device in different locations close in time)
+        let riskLevel = "low"
+        let suspicionReason = ""
+        const sameLocationSessions: any[] = []
+
+        // Group sessions by location
+        const locationGroups = new Map<string, typeof locations>()
+        for (const loc of locations) {
+          const key = `${loc.latitude}-${loc.longitude}`
+          if (!locationGroups.has(key)) {
+            locationGroups.set(key, [])
+          }
+          locationGroups.get(key)!.push(loc)
+        }
+
+        // Check for multiple users at same location (most suspicious)
+        for (const [locKey, locSessions] of locationGroups) {
+          const userIdsAtLoc = new Set(locSessions.map((s) => s.user_id))
+          if (userIdsAtLoc.size > 1) {
+            // Multiple different users used same device at exact same location
+            riskLevel = userIdsAtLoc.size >= 3 ? "critical" : userIdsAtLoc.size === 2 ? "high" : "medium"
+            suspicionReason = `${userIdsAtLoc.size} users used this device at the same location: ${locSessions[0].location_name}`
+            sameLocationSessions.push(
+              ...locSessions.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+            )
+          }
+        }
+
+        // If no same-location issue, check for impossible speed travel (low priority)
+        if (!suspicionReason && locations.length > 1) {
+          for (let i = 0; i < locations.length - 1; i++) {
+            const curr = locations[i]
+            const next = locations[i + 1]
+
+            if (curr.latitude && curr.longitude && next.latitude && next.longitude) {
+              const distance = calculateDistance(curr.latitude, curr.longitude, next.latitude, next.longitude)
+              const timeDiff = Math.abs(new Date(next.timestamp).getTime() - new Date(curr.timestamp).getTime())
+              const timeMinutes = timeDiff / (1000 * 60)
+
+              // Flag if device traveled >100km in <30 minutes (impossible for humans)
+              if (distance > 100000 && timeMinutes < 30) {
+                riskLevel = "medium"
+                suspicionReason = `Device teleported ${Math.round(distance / 1000)}km in ${timeMinutes.toFixed(1)} minutes`
+                break
+              }
+            }
+          }
+        }
+
+        return {
+          device_id: device.device_id,
+          user_count: uniqueUsers.size,
+          risk_level: suspicionReason ? riskLevel : "low",
+          suspicion_reason: suspicionReason || "Multiple users, no location overlap detected",
+          sessions: device.sessions.map((s) => ({
+            user_id: s.user_id,
+            name: `${s.first_name} ${s.last_name}`,
+            email: s.email,
+            location: s.location_name || "Unknown",
+            timestamp: s.created_at,
+          })),
+          same_location_sessions: sameLocationSessions.map((s) => ({
+            user_id: s.user_id,
+            location: s.location_name,
+            timestamp: s.timestamp,
+          })),
+          first_detected: device.sessions[device.sessions.length - 1].created_at,
+          last_detected: device.sessions[0].created_at,
+        }
+      })
+      .filter((d): d is Exclude<typeof d, null> => d !== null && d.risk_level !== "low")
+      .sort((a, b) => {
+        const riskOrder = { critical: 0, high: 1, medium: 2, low: 3 }
+        return riskOrder[a.risk_level as keyof typeof riskOrder] - riskOrder[b.risk_level as keyof typeof riskOrder]
+      })
+
+    return NextResponse.json({ data: suspiciousDevices })
   } catch (error) {
     console.error("[v0] Weekly device sharing error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

@@ -20,36 +20,37 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs"
-import { RefreshCw, ShieldAlert, Users, AlertTriangle, CheckCircle2, Smartphone } from "lucide-react"
+import { RefreshCw, ShieldAlert, Users, AlertTriangle, CheckCircle2, Smartphone, MapPin } from "lucide-react"
+
+interface Session {
+  user_id: string
+  name: string
+  email: string
+  location: string
+  timestamp: string
+}
 
 interface SharedDevice {
   device_id: string
   user_count: number
   risk_level: "critical" | "high" | "medium" | "low"
-  total_sessions: number
+  suspicion_reason: string
+  sessions: Session[]
+  same_location_sessions: Array<{
+    user_id: string
+    location: string
+    timestamp: string
+  }>
   first_detected: string
-  last_activity: string
-  users: {
-    id: string
-    name: string
-    email: string
-    employee_id: string
-    sessionCount: number
-    lastUsed: string
-  }[]
+  last_detected: string
 }
 
 interface DeptData {
-  success: boolean
-  department: { id: string; name: string; code: string }
-  sharedDevices: SharedDevice[]
-  totalSharedDevices: number
-  totalStaffInDepartment: number
-  dateRange: { start: string; end: string }
+  data: SharedDevice[]
 }
 
 export function DeptDeviceSharingClient() {
-  const [data, setData] = useState<DeptData | null>(null)
+  const [data, setData] = useState<SharedDevice[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -64,7 +65,7 @@ export function DeptDeviceSharingClient() {
         throw new Error(result.error || "Failed to fetch data")
       }
 
-      setData(result)
+      setData(result.data || [])
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred")
     } finally {
@@ -79,13 +80,13 @@ export function DeptDeviceSharingClient() {
   const getRiskBadge = (level: string) => {
     switch (level) {
       case "critical":
-        return <Badge variant="destructive">Critical</Badge>
+        return <Badge variant="destructive">Critical Risk</Badge>
       case "high":
-        return <Badge className="bg-orange-500 hover:bg-orange-600">High</Badge>
+        return <Badge className="bg-orange-500 hover:bg-orange-600">High Risk</Badge>
       case "medium":
-        return <Badge className="bg-yellow-500 hover:bg-yellow-600 text-black">Medium</Badge>
+        return <Badge className="bg-yellow-500 hover:bg-yellow-600 text-black">Medium Risk</Badge>
       default:
-        return <Badge variant="secondary">Low</Badge>
+        return <Badge variant="secondary">Low Risk</Badge>
     }
   }
 
@@ -132,8 +133,6 @@ export function DeptDeviceSharingClient() {
     )
   }
 
-  if (!data) return null
-
   return (
     <div className="space-y-6 p-6">
       {/* Header */}
@@ -141,7 +140,7 @@ export function DeptDeviceSharingClient() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Department Device Sharing</h1>
           <p className="text-muted-foreground">
-            Monitor device sharing violations in {data.department?.name || "your department"}
+            Location-aware device sharing analysis for your department
           </p>
         </div>
         <Button onClick={fetchData} variant="outline">
@@ -154,30 +153,32 @@ export function DeptDeviceSharingClient() {
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Staff</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Suspicious Devices</CardTitle>
+            <Smartphone className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{data.totalStaffInDepartment}</div>
-            <p className="text-xs text-muted-foreground">Active staff in department</p>
+            <div className="text-2xl font-bold">{data.length}</div>
+            <p className="text-xs text-muted-foreground">Devices flagged in last 7 days</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Shared Devices</CardTitle>
-            <Smartphone className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Critical Violations</CardTitle>
+            <ShieldAlert className="h-4 w-4 text-destructive" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{data.totalSharedDevices}</div>
-            <p className="text-xs text-muted-foreground">Devices used by multiple staff</p>
+            <div className="text-2xl font-bold">
+              {data.filter((d) => d.risk_level === "critical").length}
+            </div>
+            <p className="text-xs text-muted-foreground">Require immediate investigation</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Status</CardTitle>
-            {data.totalSharedDevices > 0 ? (
+            {data.length > 0 ? (
               <ShieldAlert className="h-4 w-4 text-destructive" />
             ) : (
               <CheckCircle2 className="h-4 w-4 text-green-500" />
@@ -185,10 +186,10 @@ export function DeptDeviceSharingClient() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {data.totalSharedDevices > 0 ? "Violations Found" : "All Clear"}
+              {data.length > 0 ? "Violations Found" : "All Clear"}
             </div>
             <p className="text-xs text-muted-foreground">
-              Last 7 days monitoring period
+              Last 7 days monitoring
             </p>
           </CardContent>
         </Card>
@@ -202,23 +203,22 @@ export function DeptDeviceSharingClient() {
             Device Sharing Violations
           </CardTitle>
           <CardDescription>
-            Staff members in your department who have been detected using the same device
+            Devices used by multiple staff members. Location analysis helps identify genuine sharing.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {data.sharedDevices.length === 0 ? (
+          {data.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <CheckCircle2 className="h-12 w-12 text-green-500 mb-4" />
               <h3 className="text-lg font-semibold">No Device Sharing Detected</h3>
               <p className="text-muted-foreground max-w-md mt-2">
-                No staff members in your department have been detected sharing devices in the last 7 days.
-                Keep monitoring to ensure compliance.
+                No suspicious device sharing patterns detected in your department. All staff appear to be using unique devices.
               </p>
             </div>
           ) : (
             <Tabs defaultValue={`device-0`} className="w-full">
               <TabsList className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 mb-6 w-full">
-                {data.sharedDevices.map((device, index) => (
+                {data.map((device, index) => (
                   <TabsTrigger key={device.device_id} value={`device-${index}`} className="text-xs">
                     <Smartphone className="h-3 w-3 mr-1" />
                     <span className="hidden sm:inline">Device {index + 1}</span>
@@ -226,56 +226,87 @@ export function DeptDeviceSharingClient() {
                   </TabsTrigger>
                 ))}
               </TabsList>
-              {data.sharedDevices.map((device, index) => (
+              {data.map((device, index) => (
                 <TabsContent key={device.device_id} value={`device-${index}`} className="space-y-4">
                   <div className="flex items-center justify-between rounded-lg border p-4">
-                    <div className="flex items-center gap-4">
-                      <div className="flex flex-col">
-                        <span className="font-mono text-sm font-medium">{device.device_id}</span>
-                        <span className="text-xs text-muted-foreground">{device.user_count} users sharing this device</span>
+                    <div className="flex items-center gap-4 flex-1">
+                      <div className="flex flex-col flex-1">
+                        <span className="font-mono text-sm font-medium break-all">{device.device_id}</span>
+                        <span className="text-xs text-muted-foreground mt-1">{device.user_count} users detected</span>
+                        <span className="text-xs text-amber-600 dark:text-amber-400 font-semibold mt-2">{device.suspicion_reason}</span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 ml-4">
                       {getRiskBadge(device.risk_level)}
-                      <Badge variant="outline">{device.total_sessions} sessions</Badge>
                     </div>
                   </div>
 
-                  <div className="grid gap-4 md:grid-cols-2">
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div className="rounded-lg border p-3 space-y-1">
+                      <p className="text-xs text-muted-foreground">Risk Level</p>
+                      <p className="text-sm font-medium capitalize">{device.risk_level}</p>
+                    </div>
                     <div className="rounded-lg border p-3 space-y-1">
                       <p className="text-xs text-muted-foreground">First Detected</p>
                       <p className="text-sm font-medium">{formatDate(device.first_detected)}</p>
                     </div>
                     <div className="rounded-lg border p-3 space-y-1">
                       <p className="text-xs text-muted-foreground">Last Activity</p>
-                      <p className="text-sm font-medium">{formatDate(device.last_activity)}</p>
+                      <p className="text-sm font-medium">{formatDate(device.last_detected)}</p>
                     </div>
                   </div>
 
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Staff Name</TableHead>
-                        <TableHead>Employee ID</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead className="text-right">Sessions</TableHead>
-                        <TableHead>Last Used</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {device.users.map((user) => (
-                        <TableRow key={user.id}>
-                          <TableCell className="font-medium">{user.name}</TableCell>
-                          <TableCell>{user.employee_id}</TableCell>
-                          <TableCell className="text-muted-foreground">{user.email}</TableCell>
-                          <TableCell className="text-right">{user.sessionCount}</TableCell>
-                          <TableCell>
-                            {user.lastUsed ? formatDate(user.lastUsed) : "N/A"}
-                          </TableCell>
+                  <div className="space-y-3">
+                    <h4 className="font-semibold text-sm flex items-center gap-2">
+                      <MapPin className="h-4 w-4" />
+                      All Device Sessions ({device.sessions.length})
+                    </h4>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Staff Name</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead className="flex items-center gap-1">
+                            <MapPin className="h-3 w-3" />
+                            Location
+                          </TableHead>
+                          <TableHead>Timestamp</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {device.sessions.map((session, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell className="font-medium">{session.name}</TableCell>
+                            <TableCell className="text-muted-foreground text-sm">{session.email}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline">{session.location}</Badge>
+                            </TableCell>
+                            <TableCell className="text-sm">{formatDate(session.timestamp)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  {device.same_location_sessions.length > 0 && (
+                    <div className="mt-4 p-4 bg-red-50 dark:bg-red-950/20 rounded-lg border border-red-200 dark:border-red-800">
+                      <h4 className="font-semibold text-red-800 dark:text-red-200 flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4" />
+                        ⚠️ HIGHEST SUSPICION: Same Location Usage
+                      </h4>
+                      <p className="text-sm text-red-700 dark:text-red-300 mt-2">
+                        Multiple staff members used this device at the SAME physical location. This is the strongest indicator of unauthorized device sharing:
+                      </p>
+                      <div className="mt-3 space-y-2">
+                        {device.same_location_sessions.map((session, idx) => (
+                          <div key={idx} className="text-sm text-red-700 dark:text-red-300 flex items-center gap-2">
+                            <MapPin className="h-3 w-3" />
+                            {session.location} — {formatDate(session.timestamp)}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="mt-4 p-4 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-800">
                     <h4 className="font-semibold text-amber-800 dark:text-amber-200 flex items-center gap-2">
@@ -283,8 +314,9 @@ export function DeptDeviceSharingClient() {
                       Action Required
                     </h4>
                     <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
-                      Please investigate why these staff members are using the same device.
-                      If unauthorized device sharing is confirmed, take appropriate disciplinary action.
+                      {device.same_location_sessions.length > 0
+                        ? "This device was used by multiple staff at the same location. Investigate immediately and take appropriate disciplinary action if unauthorized sharing is confirmed."
+                        : "While these staff used the same device, they were at different locations. Investigate if this is legitimate device sharing or device fingerprint error."}
                     </p>
                   </div>
                 </TabsContent>
