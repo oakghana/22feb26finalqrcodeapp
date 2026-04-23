@@ -153,7 +153,7 @@ export async function POST(request: Request) {
     console.log("[v0] Attendance record created via QR code (within tolerance):", attendance.id)
 
     if (device_info) {
-      // Store device_id explicitly so the sharing report can group by it accurately
+      // Store device_id and location data so the sharing report can include location context
       await supabase.from("device_sessions").insert({
         user_id: user.id,
         attendance_record_id: attendance.id,
@@ -161,6 +161,10 @@ export async function POST(request: Request) {
         device_info: device_info,
         session_start: now.toISOString(),
         created_at: now.toISOString(),
+        location_id: location_id,
+        location_name: location.name,
+        latitude: latitude || null,
+        longitude: longitude || null,
       })
     }
 
