@@ -12,8 +12,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
   Dialog,
-  DialogAction,
-  DialogCancel,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -227,8 +225,8 @@ export default function WeeklyDeviceSharingClient({ userRole, departmentId }: We
           {userRole === "admin" && (
             <Dialog open={showClearDialog} onOpenChange={setShowClearDialog}>
               <DialogTrigger asChild>
-                <Button variant="destructive">
-                  <Trash2 className="h-4 w-4 mr-2" />
+                <Button variant="destructive" className="gap-2">
+                  <Trash2 className="h-4 w-4" />
                   Clear Violation Data
                 </Button>
               </DialogTrigger>
@@ -270,14 +268,20 @@ export default function WeeklyDeviceSharingClient({ userRole, departmentId }: We
                   </Alert>
                 </div>
                 <DialogFooter>
-                  <DialogCancel disabled={clearing}>Cancel</DialogCancel>
-                  <DialogAction
+                  <Button
+                    onClick={() => setShowClearDialog(false)}
+                    disabled={clearing}
+                    variant="outline"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
                     onClick={handleClearViolationData}
                     disabled={clearing || !clearStartDate || !clearEndDate}
-                    className="bg-destructive hover:bg-destructive/90"
+                    variant="destructive"
                   >
                     {clearing ? "Clearing..." : "Clear Data"}
-                  </DialogAction>
+                  </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
