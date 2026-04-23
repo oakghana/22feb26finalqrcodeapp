@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { getGhanaServerTime } from "@/lib/server-time"
 
 export async function GET(request: Request) {
   try {
@@ -28,8 +29,8 @@ export async function GET(request: Request) {
     const departmentId = searchParams.get("department_id")
     const locationId = searchParams.get("location_id")
 
-    const now = new Date()
-    const startDate = new Date()
+    const now = getGhanaServerTime()
+    const startDate = getGhanaServerTime()
 
     if (timeframe === "daily") {
       startDate.setHours(0, 0, 0, 0)

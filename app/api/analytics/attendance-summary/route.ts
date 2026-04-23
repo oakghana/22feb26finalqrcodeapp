@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
 import { calculateAttendancePercentage, isDateOnLeave } from "@/lib/analytics/leave-analytics"
+import { getGhanaServerTime } from "@/lib/server-time"
 
 export async function GET(request: NextRequest) {
   try {

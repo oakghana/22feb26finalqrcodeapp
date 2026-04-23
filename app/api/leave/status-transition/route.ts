@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
+import { getGhanaServerTime, getGhanaServerTimeISO } from "@/lib/server-time"
 
 /**
  * This API automatically handles leave status transitions:
@@ -44,7 +45,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const today = new Date().toISOString().split("T")[0]
+    const today = getGhanaServerTimeISO().split("T")[0]
 
     if (action === "activate_leave") {
       // Check if start date has arrived
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest) {
           leave_status: "on_leave",
           leave_start_date: leaveNotif.start_date,
           leave_end_date: leaveNotif.end_date,
-          updated_at: new Date().toISOString(),
+          updated_at: getGhanaServerTimeISO(),
         })
         .eq("id", leaveNotif.user_id)
 

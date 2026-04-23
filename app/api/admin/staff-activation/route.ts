@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { getGhanaServerTimeISO } from "@/lib/server-time"
 
 export async function GET() {
   try {
@@ -49,7 +50,7 @@ export async function PATCH(request: NextRequest) {
       .from("user_profiles")
       .update({
         is_active: activate,
-        updated_at: new Date().toISOString(),
+        updated_at: getGhanaServerTimeISO(),
       })
       .eq("id", userId)
 
@@ -64,7 +65,7 @@ export async function PATCH(request: NextRequest) {
       table_name: "user_profiles",
       record_id: userId,
       new_values: { is_active: activate },
-      created_at: new Date().toISOString(),
+      created_at: getGhanaServerTimeISO(),
     })
 
     if (auditError) {

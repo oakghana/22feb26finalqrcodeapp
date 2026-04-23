@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { getGhanaServerTime } from "@/lib/server-time"
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,9 +23,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
     }
 
-    // Calculate date range
-    const endDate = new Date()
-    const startDate = new Date()
+    // Calculate date range using Ghana server time
+    const endDate = getGhanaServerTime()
+    const startDate = getGhanaServerTime()
 
     switch (range) {
       case "7d":
@@ -88,7 +89,7 @@ export async function GET(request: NextRequest) {
     // Generate daily trends (last 30 days)
     const dailyTrends = []
     for (let i = 29; i >= 0; i--) {
-      const date = new Date()
+      const date = getGhanaServerTime()
       date.setDate(date.getDate() - i)
       const dateStr = date.toISOString().split("T")[0]
 
@@ -109,7 +110,7 @@ export async function GET(request: NextRequest) {
     // Generate weekly trends
     const weeklyTrends = []
     for (let i = 3; i >= 0; i--) {
-      const weekStart = new Date()
+      const weekStart = getGhanaServerTime()
       weekStart.setDate(weekStart.getDate() - i * 7)
       const weekEnd = new Date(weekStart)
       weekEnd.setDate(weekEnd.getDate() + 6)
@@ -136,7 +137,7 @@ export async function GET(request: NextRequest) {
     // Generate monthly trends
     const monthlyTrends = []
     for (let i = 5; i >= 0; i--) {
-      const monthDate = new Date()
+      const monthDate = getGhanaServerTime()
       monthDate.setMonth(monthDate.getMonth() - i)
       const monthStr = monthDate.toISOString().substring(0, 7)
 

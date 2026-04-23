@@ -1,5 +1,6 @@
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { type NextRequest, NextResponse } from "next/server"
+import { getGhanaServerTime, getGhanaServerTimeISO } from "@/lib/server-time"
 
 export async function GET(request: NextRequest) {
   try {
@@ -34,9 +35,10 @@ export async function GET(request: NextRequest) {
 
     // Get query parameters
     const { searchParams } = new URL(request.url)
-    const startDate =
-      searchParams.get("start_date") || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
-    const endDate = searchParams.get("end_date") || new Date().toISOString().split("T")[0]
+    const defaultStartDate = getGhanaServerTime()
+    defaultStartDate.setDate(defaultStartDate.getDate() - 30)
+    const startDate = searchParams.get("start_date") || defaultStartDate.toISOString().split("T")[0]
+    const endDate = searchParams.get("end_date") || getGhanaServerTimeISO().split("T")[0]
     const departmentId = searchParams.get("department_id")
     const userId = searchParams.get("user_id")
     const locationId = searchParams.get("location_id")
