@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { type NextRequest, NextResponse } from "next/server"
+import { getGhanaServerTime, getGhanaServerTimeISO } from "@/lib/server-time"
 
 export async function POST(request: NextRequest) {
   try {
@@ -109,7 +110,8 @@ export async function POST(request: NextRequest) {
         console.log('[v0] Processing off-premises CHECK-OUT approval')
 
         // Find today's open attendance record for the user (no check_out_time)
-        const today = new Date().toISOString().split('T')[0]
+        // Use Ghana server time (not device time)
+        const today = getGhanaServerTimeISO().split('T')[0]
         const { data: openAttendance, error: findError } = await supabase
           .from('attendance_records')
           .select('*')
@@ -124,7 +126,7 @@ export async function POST(request: NextRequest) {
         if (findError) console.error('[v0] Error finding open attendance for checkout:', findError)
 
         if (openAttendance) {
-          const checkOutTime = new Date(pendingRequest.created_at || new Date().toISOString()).toISOString()
+          const checkOutTime = new Date(pendingRequest.created_at || getGhanaServerTimeISO()).toISOString()
           const checkInTime = new Date(openAttendance.check_in_time)
           const workHours = Math.round(((new Date(checkOutTime).getTime() - checkInTime.getTime()) / (1000 * 60 * 60)) * 100) / 100
 
@@ -133,11 +135,11 @@ export async function POST(request: NextRequest) {
             check_out_location_id: null,
             check_out_latitude: pendingRequest.latitude || null,
             check_out_longitude: pendingRequest.longitude || null,
-            check_out_location_name: pendingRequest.google_maps_name || pendingRequest.current_location_name || 'Off‑Premises (approved)',
+            check_out_location_name: pendingRequest.google_maps_name || pendingRequest.current_location_name || 'Off-Premises (approved)',
             check_out_method: 'remote_offpremises',
             is_remote_checkout: true,
             work_hours: workHours,
-            updated_at: new Date().toISOString(),
+            updated_at: getGhanaServerTimeISO(),
           }
 
           if (comments) updatePayload.early_checkout_reason = comments
@@ -160,7 +162,7 @@ export async function POST(request: NextRequest) {
             .update({
               status: 'approved',
               approved_by_id: user_id,
-              approved_at: new Date().toISOString(),
+              approved_at: getGhanaServerTimeISO(),
             })
             .eq('id', request_id)
 
@@ -170,14 +172,19 @@ export async function POST(request: NextRequest) {
           }
 
           // Notify staff
-          await supabase.from('staff_notifications').insert({
-            user_id: pendingRequest.user_id,
-            type: 'offpremises_checkout_approved',
-            title: 'Off‑Premises Check‑Out Approved',
-            message: `Your off‑premises check‑out request from ${pendingRequest.google_maps_name || pendingRequest.current_location_name} has been approved — you were checked out remotely at ${new Date(checkOutTime).toLocaleString()}.`,
-            data: { request_id, attendance_record_id: updated?.id },
-            is_read: false,
-          }).catch(err => console.warn('[v0] Failed to send checkout approval notification:', err))
+          try {
+            const { error: notifyErr } = await supabase.from('staff_notifications').insert({
+              user_id: pendingRequest.user_id,
+              type: 'offpremises_checkout_approved',
+              title: 'Off-Premises Check-Out Approved',
+              message: `Your off-premises check-out request from ${pendingRequest.google_maps_name || pendingRequest.current_location_name} has been approved - you were checked out remotely at ${new Date(checkOutTime).toLocaleString()}.`,
+              data: { request_id, attendance_record_id: updated?.id },
+              is_read: false,
+            })
+            if (notifyErr) console.warn('[v0] Failed to send checkout approval notification:', notifyErr)
+          } catch (err) {
+            console.warn('[v0] Failed to send checkout approval notification:', err)
+          }
 
           return NextResponse.json({ success: true, message: 'Off‑premises check‑out approved and recorded', attendance_record_id: updated?.id }, { status: 200 })
         } else {
@@ -186,7 +193,7 @@ export async function POST(request: NextRequest) {
           // Mark request approved but inform approver that no open attendance record existed
           const { error: statusErr } = await supabase
             .from('pending_offpremises_checkins')
-            .update({ status: 'approved', approved_by_id: user_id, approved_at: new Date().toISOString() })
+            .update({ status: 'approved', approved_by_id: user_id, approved_at: getGhanaServerTimeISO() })
             .eq('id', request_id)
 
           if (statusErr) {
@@ -194,14 +201,19 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Failed to update request status' }, { status: 500 })
           }
 
-          await supabase.from('staff_notifications').insert({
-            user_id: pendingRequest.user_id,
-            type: 'offpremises_checkout_approved',
-            title: 'Off‑Premises Check‑Out Approved (manual follow-up required)',
-            message: `Your off‑premises check‑out request has been approved by your manager but no active check‑in was found to attach the checkout to. Please contact HR or your manager for manual correction.`,
-            data: { request_id },
-            is_read: false,
-          }).catch(err => console.warn('[v0] Failed to send notification (no open attendance):', err))
+          try {
+            const { error: notifyErr } = await supabase.from('staff_notifications').insert({
+              user_id: pendingRequest.user_id,
+              type: 'offpremises_checkout_approved',
+              title: 'Off-Premises Check-Out Approved (manual follow-up required)',
+              message: `Your off-premises check-out request has been approved by your manager but no active check-in was found to attach the checkout to. Please contact HR or your manager for manual correction.`,
+              data: { request_id },
+              is_read: false,
+            })
+            if (notifyErr) console.warn('[v0] Failed to send notification (no open attendance):', notifyErr)
+          } catch (err) {
+            console.warn('[v0] Failed to send notification (no open attendance):', err)
+          }
 
           return NextResponse.json({ success: true, message: 'Request approved but no open attendance record found' }, { status: 200 })
         }
@@ -232,13 +244,13 @@ export async function POST(request: NextRequest) {
         // Continue even if notification fails
       }
 
-      // Update pending request status
+      // Update pending request status with Ghana server time
       const { error: updateError2 } = await supabase
         .from("pending_offpremises_checkins")
         .update({
           status: "approved",
           approved_by_id: user_id,
-          approved_at: new Date().toISOString(),
+          approved_at: getGhanaServerTimeISO(),
         })
         .eq("id", request_id)
 
@@ -251,17 +263,22 @@ export async function POST(request: NextRequest) {
       }
 
       // Send notification to the staff member
-      await supabase.from("staff_notifications").insert({
-        user_id: pendingRequest.user_id,
-        type: "offpremises_checkin_approved",
-        title: "Off-Premises Check-In Approved",
-        message: `Your off-premises check-in request from ${pendingRequest.google_maps_name || pendingRequest.current_location_name} has been approved. You are checked in to your assigned location on official duty.`,
-        data: {
-          request_id: request_id,
-          attendance_record_id: attendanceRecord?.id,
-        },
-        is_read: false,
-      }).catch((err) => console.warn("[v0] Failed to send approval notification:", err))
+      try {
+        const { error: notifyErr } = await supabase.from("staff_notifications").insert({
+          user_id: pendingRequest.user_id,
+          type: "offpremises_checkin_approved",
+          title: "Off-Premises Check-In Approved",
+          message: `Your off-premises check-in request from ${pendingRequest.google_maps_name || pendingRequest.current_location_name} has been approved. You are checked in to your assigned location on official duty.`,
+          data: {
+            request_id: request_id,
+            attendance_record_id: attendanceRecord?.id,
+          },
+          is_read: false,
+        })
+        if (notifyErr) console.warn("[v0] Failed to send approval notification:", notifyErr)
+      } catch (err) {
+        console.warn("[v0] Failed to send approval notification:", err)
+      }
 
       console.log("[v0] Request approved successfully:", request_id)
       
@@ -276,13 +293,13 @@ export async function POST(request: NextRequest) {
     } else {
       console.log("[v0] Rejecting off-premises check-in request:", request_id)
 
-      // Update pending request status
+      // Update pending request status with Ghana server time
       const { error: updateError } = await supabase
         .from("pending_offpremises_checkins")
         .update({
           status: "rejected",
           approved_by_id: user_id,
-          approved_at: new Date().toISOString(),
+          approved_at: getGhanaServerTimeISO(),
           rejection_reason: comments,
         })
         .eq("id", request_id)
@@ -296,16 +313,21 @@ export async function POST(request: NextRequest) {
       }
 
       // Send notification to the staff member
-      await supabase.from("staff_notifications").insert({
-        user_id: pendingRequest.user_id,
-        type: "offpremises_checkin_rejected",
-        title: "Off-Premises Check-In Rejected",
-        message: `Your off-premises check-in request from ${pendingRequest.google_maps_name || pendingRequest.current_location_name} has been rejected. ${comments ? `Reason: ${comments}` : ""}`,
-        data: {
-          request_id: request_id,
-        },
-        is_read: false,
-      }).catch((err) => console.warn("[v0] Failed to send rejection notification:", err))
+      try {
+        const { error: notifyErr } = await supabase.from("staff_notifications").insert({
+          user_id: pendingRequest.user_id,
+          type: "offpremises_checkin_rejected",
+          title: "Off-Premises Check-In Rejected",
+          message: `Your off-premises check-in request from ${pendingRequest.google_maps_name || pendingRequest.current_location_name} has been rejected. ${comments ? `Reason: ${comments}` : ""}`,
+          data: {
+            request_id: request_id,
+          },
+          is_read: false,
+        })
+        if (notifyErr) console.warn("[v0] Failed to send rejection notification:", notifyErr)
+      } catch (err) {
+        console.warn("[v0] Failed to send rejection notification:", err)
+      }
 
       console.log("[v0] Request rejected successfully:", request_id)
 
