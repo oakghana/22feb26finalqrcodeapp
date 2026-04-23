@@ -4,12 +4,23 @@ import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { AlertTriangle, ChevronLeft, Smartphone, Users, Calendar, MapPin, Filter, X } from "lucide-react"
+import { AlertTriangle, ChevronLeft, Smartphone, Users, Calendar, MapPin, Filter, X, Trash2 } from "lucide-react"
 import Link from "next/link"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Dialog,
+  DialogAction,
+  DialogCancel,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 
 interface SharedDevice {
   device_id: string
@@ -50,6 +61,10 @@ export default function WeeklyDeviceSharingClient({ userRole, departmentId }: We
   const [locations, setLocations] = useState<Location[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
   const [showFilters, setShowFilters] = useState(false)
+  const [showClearDialog, setShowClearDialog] = useState(false)
+  const [clearStartDate, setClearStartDate] = useState<string>("")
+  const [clearEndDate, setClearEndDate] = useState<string>("")
+  const [clearing, setClearing] = useState(false)
   
   // Filter states
   const [selectedLocation, setSelectedLocation] = useState<string>("all")
@@ -123,6 +138,46 @@ export default function WeeklyDeviceSharingClient({ userRole, departmentId }: We
 
   const hasActiveFilters = selectedLocation !== "all" || selectedDepartment !== "all" || startDate || endDate
 
+  const handleClearViolationData = async () => {
+    if (!clearStartDate || !clearEndDate) {
+      alert("Please select both start and end dates")
+      return
+    }
+
+    if (new Date(clearStartDate) > new Date(clearEndDate)) {
+      alert("Start date cannot be after end date")
+      return
+    }
+
+    try {
+      setClearing(true)
+      const response = await fetch("/api/admin/clear-device-violations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          start_date: clearStartDate + "T00:00:00Z",
+          end_date: clearEndDate + "T23:59:59Z",
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to clear violation data")
+      }
+
+      alert(`Successfully cleared ${data.records_deleted} device session records`)
+      setShowClearDialog(false)
+      setClearStartDate("")
+      setClearEndDate("")
+      fetchSharedDevices()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Error clearing violation data")
+    } finally {
+      setClearing(false)
+    }
+  }
+
   const getRiskBadge = (level: string) => {
     const colors = {
       low: "bg-blue-100 text-blue-800",
@@ -169,6 +224,64 @@ export default function WeeklyDeviceSharingClient({ userRole, departmentId }: We
           <Button onClick={fetchSharedDevices} variant="outline">
             Refresh Data
           </Button>
+          {userRole === "admin" && (
+            <Dialog open={showClearDialog} onOpenChange={setShowClearDialog}>
+              <DialogTrigger asChild>
+                <Button variant="destructive">
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Clear Violation Data
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Clear Violation Data</DialogTitle>
+                  <DialogDescription>
+                    Select a date range to clear all device violation records. This action cannot be undone.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="clear-start">Start Date</Label>
+                    <Input
+                      id="clear-start"
+                      type="date"
+                      value={clearStartDate}
+                      onChange={(e) => setClearStartDate(e.target.value)}
+                      max={clearEndDate || undefined}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="clear-end">End Date</Label>
+                    <Input
+                      id="clear-end"
+                      type="date"
+                      value={clearEndDate}
+                      onChange={(e) => setClearEndDate(e.target.value)}
+                      min={clearStartDate || undefined}
+                      max={new Date().toISOString().split("T")[0]}
+                    />
+                  </div>
+                  <Alert variant="destructive">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Warning</AlertTitle>
+                    <AlertDescription>
+                      This will permanently delete all device session records from the selected date range. This action cannot be undone.
+                    </AlertDescription>
+                  </Alert>
+                </div>
+                <DialogFooter>
+                  <DialogCancel disabled={clearing}>Cancel</DialogCancel>
+                  <DialogAction
+                    onClick={handleClearViolationData}
+                    disabled={clearing || !clearStartDate || !clearEndDate}
+                    className="bg-destructive hover:bg-destructive/90"
+                  >
+                    {clearing ? "Clearing..." : "Clear Data"}
+                  </DialogAction>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          )}
         </div>
       </div>
 
