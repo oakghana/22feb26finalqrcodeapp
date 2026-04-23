@@ -72,6 +72,7 @@ export async function GET(request: NextRequest) {
       `)
       .eq("is_active", true)
       .order("first_name")
+      .range(0, 1999) // Fetch up to 2000 records instead of default 1000
 
     if (error) {
       console.error("[v0] Users fetch error:", error)
