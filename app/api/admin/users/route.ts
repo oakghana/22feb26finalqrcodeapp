@@ -3,7 +3,6 @@ import { type NextRequest, NextResponse } from "next/server"
 
 export async function GET(request: NextRequest) {
   try {
-    console.log("[v0] Users API: Starting user fetch")
     const supabase = await createClient()
 
     // Get authenticated user
@@ -13,11 +12,8 @@ export async function GET(request: NextRequest) {
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      console.log("[v0] Users API: Authentication failed", authError)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
-
-    console.log("[v0] Users API: User authenticated", user.id)
 
     const { data: profile, error: profileError } = await supabase
       .from("user_profiles")
@@ -25,10 +21,7 @@ export async function GET(request: NextRequest) {
       .eq("id", user.id)
       .single()
 
-    console.log("[v0] Users API: Profile query result:", { profile, profileError })
-
     if (profileError) {
-      console.error("[v0] Users API: Profile fetch error:", profileError)
       return NextResponse.json(
         {
           error: "Failed to fetch user profile",
@@ -39,14 +32,10 @@ export async function GET(request: NextRequest) {
     }
 
     if (!profile) {
-      console.log("[v0] Users API: No profile found for user")
       return NextResponse.json({ error: "User profile not found" }, { status: 404 })
     }
 
-    console.log("[v0] Users API: User profile:", profile)
-
     if (!["admin", "department_head", "it-admin"].includes(profile.role)) {
-      console.log("[v0] Users API: Insufficient permissions - user role:", profile.role)
       return NextResponse.json(
         {
           error: "Insufficient permissions",
@@ -56,8 +45,6 @@ export async function GET(request: NextRequest) {
         { status: 403 },
       )
     }
-
-    console.log("[v0] Users API: Permission check passed", profile.role)
 
     const { data: users, error } = await supabase
       .from("user_profiles")
@@ -72,10 +59,9 @@ export async function GET(request: NextRequest) {
       `)
       .eq("is_active", true)
       .order("first_name")
-      .range(0, 1999) // Fetch up to 2000 records instead of default 1000
+      .range(0, 2999) // Fetch up to 3000 records to support larger organizations
 
     if (error) {
-      console.error("[v0] Users fetch error:", error)
       return NextResponse.json(
         {
           success: false,
@@ -97,10 +83,7 @@ export async function GET(request: NextRequest) {
     let filteredUsers = users || []
     if (profile.role === "it-admin") {
       filteredUsers = users?.filter((u) => u.role !== "admin" && u.role !== "it-admin") || []
-      console.log("[v0] Users API: IT-Admin filtering applied, showing", filteredUsers.length, "users")
     }
-
-    console.log("[v0] Users API: Successfully fetched", filteredUsers.length, "users")
 
     return NextResponse.json(
       {
@@ -127,7 +110,6 @@ export async function GET(request: NextRequest) {
       },
     )
   } catch (error) {
-    console.error("[v0] Users API error:", error)
     return NextResponse.json(
       {
         success: false,
