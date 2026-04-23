@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { getGhanaServerTime } from "@/lib/server-time"
 
 export async function GET(request: Request) {
   try {
@@ -27,8 +28,8 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Unauthorized - Admin or Department Head only" }, { status: 403 })
     }
 
-    // Calculate date range based on period
-    const today = new Date()
+    // Calculate date range based on period - use Ghana server time
+    const today = getGhanaServerTime()
     let startDate: Date
     const endDate = today
 

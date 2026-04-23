@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { type NextRequest, NextResponse } from "next/server"
+import { getGhanaServerTimeISO } from "@/lib/server-time"
 
 export async function GET(request: NextRequest) {
   try {
@@ -250,13 +251,13 @@ export async function PUT(request: NextRequest) {
       .update({
         hod_status: status,
         hod_reviewed_by: user.id,
-        hod_reviewed_at: new Date().toISOString(),
+        hod_reviewed_at: getGhanaServerTimeISO(),
         hod_review_notes: reviewNotes || null,
         final_status: finalStatus,
         // Keep old fields for backward compatibility
         status,
         reviewed_by: user.id,
-        reviewed_at: new Date().toISOString(),
+        reviewed_at: getGhanaServerTimeISO(),
         review_notes: reviewNotes || null,
       })
       .eq("id", documentId)

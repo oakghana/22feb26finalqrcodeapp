@@ -65,36 +65,23 @@ export function PasswordManagement({ userId, userEmail, isAdmin = false }: Passw
     setLoadingUsers(true)
     setError(null)
     try {
-      console.log("[v0] Password Management: Fetching users")
       const response = await fetch("/api/admin/users")
-
-      console.log("[v0] Password Management: Response status:", response.status)
-      console.log("[v0] Password Management: Response headers:", Object.fromEntries(response.headers.entries()))
 
       if (!response.ok) {
         const errorText = await response.text()
-        console.error("[v0] Password Management: HTTP error response:", errorText)
         throw new Error(`HTTP error! status: ${response.status} - ${errorText}`)
       }
 
       const contentType = response.headers.get("content-type")
       if (!contentType || !contentType.includes("application/json")) {
-        const text = await response.text()
-        console.error("[v0] Password Management: Non-JSON response:", text.substring(0, 200))
         throw new Error("Server returned non-JSON response")
       }
 
       const result = await response.json()
-      console.log("[v0] Password Management: API response:", result)
 
       if (result.success) {
         setUsers(result.users || [])
-        console.log("[v0] Password Management: Loaded", result.users?.length || 0, "users")
-        if (result.debug) {
-          console.log("[v0] Password Management: Debug info:", result.debug)
-        }
       } else {
-        console.error("[v0] Password Management: API error:", result.error)
         const errorMessage = result.error || "Failed to fetch users"
         const contextMessage = result.userRole
           ? `Current user role: ${result.userRole}. Required roles: ${result.requiredRoles?.join(", ") || "admin, department_head"}`
@@ -102,7 +89,6 @@ export function PasswordManagement({ userId, userEmail, isAdmin = false }: Passw
         setError(`${errorMessage}${contextMessage ? ` (${contextMessage})` : ""}`)
       }
     } catch (error) {
-      console.error("[v0] Password Management: Fetch error:", error)
       const errorMessage = error instanceof Error ? error.message : "Unknown error occurred"
       setError(`Failed to load users: ${errorMessage}`)
     } finally {
@@ -117,8 +103,8 @@ export function PasswordManagement({ userId, userEmail, isAdmin = false }: Passw
       if (result.success && result.profile) {
         setCurrentUserRole(result.profile.role)
       }
-    } catch (error) {
-      console.error("[v0] Failed to fetch current user role:", error)
+    } catch {
+      // Silently fail - role defaults to staff
     }
   }
 
@@ -127,7 +113,6 @@ export function PasswordManagement({ userId, userEmail, isAdmin = false }: Passw
     if (user) {
       setSelectedUserId(userId)
       setSelectedUserEmail(user.email)
-      console.log("[v0] Password Management: Selected user:", user.email)
       setError(null) // Clear any previous errors
     }
   }

@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { type NextRequest, NextResponse } from "next/server"
+import { getGhanaServerTimeISO } from "@/lib/server-time"
 
 export async function POST(request: NextRequest) {
   try {
@@ -70,7 +71,7 @@ export async function POST(request: NextRequest) {
           leave_end_date: leave_status === "active" ? null : leave_end_date,
           leave_reason: leave_status === "active" ? null : leave_reason,
           leave_document_url: leave_status === "active" ? null : leave_document_url,
-          updated_at: new Date().toISOString(),
+          updated_at: getGhanaServerTimeISO(),
         })
         .eq("id", userId)
         .select()

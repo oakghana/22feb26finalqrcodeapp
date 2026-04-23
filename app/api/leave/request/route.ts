@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
+import { getGhanaServerTime, getGhanaServerTimeISO } from "@/lib/server-time"
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,9 +24,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Start date must be before end date" }, { status: 400 })
     }
 
-    if (start < new Date()) {
+    if (start < getGhanaServerTime()) {
       start.setHours(0, 0, 0, 0)
-      const today = new Date()
+      const today = getGhanaServerTime()
       today.setHours(0, 0, 0, 0)
       if (start < today) {
         return NextResponse.json({ error: "Cannot request leave for past dates" }, { status: 400 })
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest) {
         leave_start_date: start.toISOString().split("T")[0],
         leave_end_date: end.toISOString().split("T")[0],
         leave_reason: reason,
-        updated_at: new Date().toISOString(),
+        updated_at: getGhanaServerTimeISO(),
       })
       .eq("id", user.id)
       .select()

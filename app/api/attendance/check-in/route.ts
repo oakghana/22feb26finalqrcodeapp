@@ -205,7 +205,7 @@ export async function POST(request: NextRequest) {
       }
 
       const ts = Number(location_timestamp)
-      const age = Date.now() - ts
+      const age = getGhanaServerTime().getTime() - ts
       if (age > maxLocationAge) {
         console.warn("[v0] Stale location reading detected (age ms):", age)
         try {

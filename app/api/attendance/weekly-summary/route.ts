@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { getGhanaServerTime } from "@/lib/server-time"
 
 export const dynamic = "force-dynamic"
 
@@ -20,7 +21,7 @@ export async function GET(request: Request) {
     // Get target user ID (defaults to current user)
     const targetUserId = userId || user.id
 
-    const today = new Date()
+    const today = getGhanaServerTime()
     const lastSunday = new Date(today)
 
     // Go back to last Sunday

@@ -185,6 +185,13 @@ const navigationItems = [
     ],
   },
   {
+    title: "Dept Device Sharing",
+    href: "/dashboard/dept-device-sharing",
+    icon: ShieldAlert,
+    roles: ["department_head"],
+    category: "admin",
+  },
+  {
     title: "Staff Management",
     href: "/dashboard/staff",
     icon: Users,

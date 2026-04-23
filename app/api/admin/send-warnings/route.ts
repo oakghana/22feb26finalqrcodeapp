@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
+import { getGhanaServerTimeISO } from "@/lib/server-time"
 
 export async function POST(request: Request) {
   try {
@@ -73,7 +74,7 @@ export async function POST(request: Request) {
     }
 
     // Filter out users who are on approved leave (use RLS-aware regular client for leave_status)
-    const today = new Date().toISOString().split("T")[0]
+    const today = getGhanaServerTimeISO().split("T")[0]
     const { data: usersOnLeave } = await supabase
       .from("leave_status")
       .select("user_id")
@@ -100,7 +101,7 @@ export async function POST(request: Request) {
         message: personalizedMessage,
         warning_type: warning_type || "attendance_issue",
         is_read: false,
-        attendance_date: new Date().toISOString().split("T")[0],
+        attendance_date: getGhanaServerTimeISO().split("T")[0],
         department_id: profile.department_id,
       }
     })
@@ -126,7 +127,7 @@ export async function POST(request: Request) {
           recipients: ids.length,
           warning_type,
           sender_role: profile.role,
-          timestamp: new Date().toISOString(),
+          timestamp: getGhanaServerTimeISO(),
         },
       })
 

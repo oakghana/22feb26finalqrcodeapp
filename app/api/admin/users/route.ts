@@ -3,7 +3,6 @@ import { type NextRequest, NextResponse } from "next/server"
 
 export async function GET(request: NextRequest) {
   try {
-    console.log("[v0] Users API: Starting user fetch")
     const supabase = await createClient()
 
     // Get authenticated user
@@ -13,11 +12,8 @@ export async function GET(request: NextRequest) {
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      console.log("[v0] Users API: Authentication failed", authError)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
-
-    console.log("[v0] Users API: User authenticated", user.id)
 
     const { data: profile, error: profileError } = await supabase
       .from("user_profiles")
@@ -25,10 +21,7 @@ export async function GET(request: NextRequest) {
       .eq("id", user.id)
       .single()
 
-    console.log("[v0] Users API: Profile query result:", { profile, profileError })
-
     if (profileError) {
-      console.error("[v0] Users API: Profile fetch error:", profileError)
       return NextResponse.json(
         {
           error: "Failed to fetch user profile",
@@ -39,14 +32,10 @@ export async function GET(request: NextRequest) {
     }
 
     if (!profile) {
-      console.log("[v0] Users API: No profile found for user")
       return NextResponse.json({ error: "User profile not found" }, { status: 404 })
     }
 
-    console.log("[v0] Users API: User profile:", profile)
-
     if (!["admin", "department_head", "it-admin"].includes(profile.role)) {
-      console.log("[v0] Users API: Insufficient permissions - user role:", profile.role)
       return NextResponse.json(
         {
           error: "Insufficient permissions",
@@ -57,50 +46,60 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    console.log("[v0] Users API: Permission check passed", profile.role)
-
-    const { data: users, error } = await supabase
-      .from("user_profiles")
-      .select(`
-        id,
-        first_name,
-        last_name,
-        email,
-        employee_id,
-        role,
-        is_active
-      `)
-      .eq("is_active", true)
-      .order("first_name")
-      .range(0, 1999) // Fetch up to 2000 records instead of default 1000
-
-    if (error) {
-      console.error("[v0] Users fetch error:", error)
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Failed to fetch users",
-          details: error.message,
-        },
-        {
-          status: 500,
-          headers: {
-            "Content-Type": "application/json",
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            Pragma: "no-cache",
-            Expires: "0",
+    // Fetch ALL users by paginating in batches of 1000 (Supabase default limit)
+    const BATCH_SIZE = 1000
+    let allUsers: any[] = []
+    let offset = 0
+    let hasMore = true
+    
+    while (hasMore) {
+      const { data: batch, error: batchError } = await supabase
+        .from("user_profiles")
+        .select(`
+          id,
+          first_name,
+          last_name,
+          email,
+          employee_id,
+          role,
+          is_active
+        `)
+        .eq("is_active", true)
+        .order("first_name")
+        .range(offset, offset + BATCH_SIZE - 1)
+      
+      if (batchError) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Failed to fetch users",
+            details: batchError.message,
           },
-        },
-      )
+          {
+            status: 500,
+            headers: {
+              "Content-Type": "application/json",
+              "Cache-Control": "no-cache, no-store, must-revalidate",
+              Pragma: "no-cache",
+              Expires: "0",
+            },
+          },
+        )
+      }
+      
+      if (batch && batch.length > 0) {
+        allUsers = allUsers.concat(batch)
+        offset += BATCH_SIZE
+        hasMore = batch.length === BATCH_SIZE
+      } else {
+        hasMore = false
+      }
     }
 
-    let filteredUsers = users || []
+    let filteredUsers = allUsers
     if (profile.role === "it-admin") {
       filteredUsers = users?.filter((u) => u.role !== "admin" && u.role !== "it-admin") || []
-      console.log("[v0] Users API: IT-Admin filtering applied, showing", filteredUsers.length, "users")
     }
-
-    console.log("[v0] Users API: Successfully fetched", filteredUsers.length, "users")
 
     return NextResponse.json(
       {
@@ -127,7 +126,6 @@ export async function GET(request: NextRequest) {
       },
     )
   } catch (error) {
-    console.error("[v0] Users API error:", error)
     return NextResponse.json(
       {
         success: false,

@@ -1,6 +1,6 @@
 "use client"
 
-import { useServerTime } from "@/lib/server-time"
+import { useServerTime } from "@/lib/client-time"
 import { useState, useEffect } from "react"
 import { Clock } from "lucide-react"
 

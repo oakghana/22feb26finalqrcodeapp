@@ -1,7 +1,7 @@
 "use client"
 
 import React, { createContext, useContext, useEffect, useState } from "react"
-import { getServerTime } from "@/lib/server-time"
+import { getServerTime } from "@/lib/client-time"
 
 interface TimeSyncContextType {
   isSynced: boolean

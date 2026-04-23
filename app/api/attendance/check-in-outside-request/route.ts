@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { type NextRequest, NextResponse } from "next/server"
+import { getGhanaServerTimeISO } from "@/lib/server-time"
 
 console.log("[v0] check-in-outside-request route module loaded")
 
@@ -159,7 +160,7 @@ export async function POST(request: NextRequest) {
 
     // Server-side guard: prevent duplicate pending requests from the same user for the same day
     try {
-      const today = new Date().toISOString().split('T')[0]
+      const today = getGhanaServerTimeISO().split('T')[0]
       const { data: existing, error: existingErr } = await supabase
         .from('pending_offpremises_checkins')
         .select('id, status, created_at')

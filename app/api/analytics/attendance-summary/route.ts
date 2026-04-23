@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
 import { calculateAttendancePercentage, isDateOnLeave } from "@/lib/analytics/leave-analytics"
+import { getGhanaServerTime } from "@/lib/server-time"
 
 export async function GET(request: NextRequest) {
   try {
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
     const monthParam = searchParams.get("month")
     const yearParam = searchParams.get("year")
 
-    const now = new Date()
+    const now = getGhanaServerTime()
     const month = monthParam ? parseInt(monthParam) : now.getMonth()
     const year = yearParam ? parseInt(yearParam) : now.getFullYear()
 
