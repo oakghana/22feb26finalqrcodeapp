@@ -4,9 +4,20 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { AlertTriangle, Shield, Clock, ArrowLeft } from "lucide-react"
+import { AlertTriangle, Shield, Clock, ArrowLeft, Trash2, RefreshCw } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 
 interface Violation {
   id: string
@@ -39,6 +50,8 @@ export default function DeviceViolationsClient({
 }) {
   const [violations, setViolations] = useState<Violation[]>([])
   const [loading, setLoading] = useState(true)
+  const [clearing, setClearing] = useState(false)
+  const [clearResult, setClearResult] = useState<{ success: boolean; message: string; cleared?: any } | null>(null)
   const router = useRouter()
 
   useEffect(() => {
@@ -46,6 +59,7 @@ export default function DeviceViolationsClient({
   }, [])
 
   const fetchViolations = async () => {
+    setLoading(true)
     try {
       const supabase = createClient()
 
@@ -61,7 +75,6 @@ export default function DeviceViolationsClient({
           error.message.includes("does not exist") ||
           error.message.includes("schema cache")
         ) {
-          console.log("[v0] Device security violations table not created yet")
           setViolations([])
           setLoading(false)
           return
@@ -69,11 +82,18 @@ export default function DeviceViolationsClient({
         throw error
       }
 
-      // If we have violations, fetch user profiles separately
       if (data && data.length > 0) {
-        const userIds = [...new Set([...data.map((v: any) => v.attempted_user_id), ...data.map((v: any) => v.bound_user_id)])]
+        const userIds = [
+          ...new Set([
+            ...data.map((v: any) => v.attempted_user_id),
+            ...data.map((v: any) => v.bound_user_id),
+          ]),
+        ]
 
-        const { data: profiles } = await supabase.from("user_profiles").select("*").in("id", userIds)
+        const { data: profiles } = await supabase
+          .from("user_profiles")
+          .select("*")
+          .in("id", userIds)
 
         const profileMap = new Map((profiles as any[])?.map((p: any) => [p.id, p]) || [])
 
@@ -83,11 +103,12 @@ export default function DeviceViolationsClient({
             attempted_user: profileMap.get(v.attempted_user_id),
             bound_user: profileMap.get(v.bound_user_id),
           }))
-          .filter((v: any) => v.attempted_user && v.bound_user) // Filter out any missing profiles
+          .filter((v: any) => v.attempted_user && v.bound_user)
 
-        // Filter by department for department heads
         if (userRole === "department_head" && departmentId) {
-          setViolations(enrichedViolations.filter((v) => v.attempted_user.department_id === departmentId))
+          setViolations(
+            enrichedViolations.filter((v) => v.attempted_user.department_id === departmentId)
+          )
         } else {
           setViolations(enrichedViolations)
         }
@@ -102,9 +123,42 @@ export default function DeviceViolationsClient({
     }
   }
 
+  const handleClearDeviceData = async () => {
+    setClearing(true)
+    setClearResult(null)
+    try {
+      const response = await fetch("/api/admin/clear-device-data", {
+        method: "DELETE",
+      })
+      const result = await response.json()
+      if (response.ok) {
+        setClearResult({
+          success: true,
+          message: result.message,
+          cleared: result.cleared,
+        })
+        setViolations([])
+      } else {
+        setClearResult({
+          success: false,
+          message: result.error || "Failed to clear device data.",
+        })
+      }
+    } catch (err) {
+      setClearResult({
+        success: false,
+        message: "Network error. Please try again.",
+      })
+    } finally {
+      setClearing(false)
+    }
+  }
+
   if (loading) {
     return <div className="p-6">Loading device security violations...</div>
   }
+
+  const isAdmin = userRole === "admin" || userRole === "it-admin"
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -113,13 +167,73 @@ export default function DeviceViolationsClient({
         Back to Dashboard
       </Button>
 
-      <div className="flex items-center gap-3">
-        <Shield className="h-8 w-8 text-destructive" />
-        <div>
-          <h1 className="text-3xl font-bold">Device Security Violations</h1>
-          <p className="text-muted-foreground">Monitor and investigate device sharing attempts</p>
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-3">
+          <Shield className="h-8 w-8 text-destructive" />
+          <div>
+            <h1 className="text-3xl font-bold">Device Security Violations</h1>
+            <p className="text-muted-foreground">Monitor and investigate device sharing attempts</p>
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={fetchViolations} disabled={loading}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh
+          </Button>
+
+          {isAdmin && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" size="sm" disabled={clearing}>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Clear All Device Data
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Clear All Device Monitoring Data?</AlertDialogTitle>
+                  <AlertDialogDescription className="space-y-2">
+                    <span className="block">
+                      This will permanently delete all device sessions, security violations, and device bindings from the database.
+                    </span>
+                    <span className="block font-semibold text-destructive">
+                      This action cannot be undone. The system will start fresh with accurate device fingerprinting going forward.
+                    </span>
+                    <span className="block text-sm">
+                      Attendance records, staff profiles, and audit logs are NOT affected.
+                    </span>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleClearDeviceData}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    Yes, Clear All Device Data
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
         </div>
       </div>
+
+      {clearResult && (
+        <Card className={clearResult.success ? "border-green-500/40 bg-green-50" : "border-destructive/40 bg-red-50"}>
+          <CardContent className="pt-4 pb-4">
+            <p className={`font-medium text-sm ${clearResult.success ? "text-green-800" : "text-red-800"}`}>
+              {clearResult.message}
+            </p>
+            {clearResult.success && clearResult.cleared && (
+              <p className="text-xs text-green-700 mt-1">
+                Cleared: {clearResult.cleared.sessions} sessions, {clearResult.cleared.violations} violations, {clearResult.cleared.bindings} bindings. Device monitoring is now active with accurate tracking.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {violations.length === 0 ? (
         <Card>

@@ -6,7 +6,6 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
 
-    // Get authenticated user
     const {
       data: { user },
       error: authError,
@@ -16,7 +15,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Get user profile to check role and department
     const { data: profile } = await supabase
       .from("user_profiles")
       .select("role, department_id")
@@ -27,30 +25,30 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Forbidden: Admin or Department Head access required" }, { status: 403 })
     }
 
-    // Get filter parameters from query string
     const { searchParams } = new URL(request.url)
     const locationId = searchParams.get("location_id")
     const departmentId = searchParams.get("department_id")
     const startDate = searchParams.get("start_date")
     const endDate = searchParams.get("end_date")
 
-    // Set date range (default to last 7 days) using Ghana server time
+    // Use Ghana server time for date range
     const defaultStartDate = getGhanaServerTime()
     defaultStartDate.setDate(defaultStartDate.getDate() - 7)
-    
+
     const filterStartDate = startDate ? new Date(startDate) : defaultStartDate
     const filterEndDate = endDate ? new Date(endDate) : getGhanaServerTime()
 
-    const sevenDaysAgo = defaultStartDate;
-
-    let deviceSessionsQuery = supabase
+    // CRITICAL FIX: Only fetch sessions that have a real device_id (NOT NULL, NOT empty).
+    // We never fall back to IP address grouping — that caused Abban (Eastern) and
+    // Arthur (Central) to appear as "sharing" when they share the same ISP/CGNAT IP.
+    const { data: deviceSessions, error: sessionsError } = await supabase
       .from("device_sessions")
       .select("device_id, ip_address, user_id, created_at")
+      .not("device_id", "is", null)
+      .neq("device_id", "")
       .gte("created_at", filterStartDate.toISOString())
       .lte("created_at", filterEndDate.toISOString())
       .order("created_at", { ascending: false })
-
-    const { data: deviceSessions, error: sessionsError } = await deviceSessionsQuery
 
     if (sessionsError) {
       console.error("[v0] Error fetching device sessions:", sessionsError)
@@ -62,17 +60,15 @@ export async function GET(request: NextRequest) {
     }
 
     const userIds = [...new Set(deviceSessions.map((s) => s.user_id))]
+
     let userProfilesQuery = supabase
       .from("user_profiles")
       .select("id, first_name, last_name, email, department_id, assigned_location_id, departments(name)")
       .in("id", userIds)
-    
-    // Apply department filter
+
     if (departmentId) {
       userProfilesQuery = userProfilesQuery.eq("department_id", departmentId)
     }
-    
-    // Apply location filter
     if (locationId) {
       userProfilesQuery = userProfilesQuery.eq("assigned_location_id", locationId)
     }
@@ -86,6 +82,7 @@ export async function GET(request: NextRequest) {
 
     const profileMap = new Map(userProfiles?.map((p) => [p.id, p]) || [])
 
+    // Group ONLY by device_id — never by IP address
     const deviceMap = new Map<
       string,
       {
@@ -104,18 +101,18 @@ export async function GET(request: NextRequest) {
     >()
 
     for (const session of deviceSessions) {
-      const key = session.device_id || session.ip_address
-      if (!key) continue
+      // Strict: skip sessions without a valid device_id (belt-and-suspenders)
+      if (!session.device_id || session.device_id.trim() === "") continue
 
       const userProfile = profileMap.get(session.user_id)
       if (!userProfile) continue
 
-      // Filter by department for department heads
+      // Department heads only see their own department
       if (profile.role === "department_head") {
-        if (userProfile.department_id !== profile.department_id) {
-          continue
-        }
+        if (userProfile.department_id !== profile.department_id) continue
       }
+
+      const key = session.device_id // ONLY group by device_id
 
       if (!deviceMap.has(key)) {
         deviceMap.set(key, {
@@ -134,34 +131,36 @@ export async function GET(request: NextRequest) {
           first_name: userProfile.first_name,
           last_name: userProfile.last_name,
           email: userProfile.email,
-          department_name: userProfile.departments?.name || "Unknown",
+          department_name: (userProfile as any).departments?.name || "Unknown",
           last_used: session.created_at,
         })
       }
     }
 
+    // Only flag a device if 2+ DIFFERENT users used the exact same device_id
     const sharedDevices = Array.from(deviceMap.values())
       .filter((device) => device.users.size > 1)
       .map((device) => ({
         device_id: device.device_id,
         ip_address: device.ip_address,
         user_count: device.users.size,
-        risk_level: device.users.size >= 5 ? "critical" : device.users.size >= 3 ? "high" : "medium",
+        risk_level:
+          device.users.size >= 5 ? "critical" : device.users.size >= 3 ? "high" : "medium",
         users: device.userDetails,
         first_detected: device.userDetails.reduce(
-          (earliest, user) => (user.last_used < earliest ? user.last_used : earliest),
-          device.userDetails[0].last_used,
+          (earliest, u) => (u.last_used < earliest ? u.last_used : earliest),
+          device.userDetails[0].last_used
         ),
         last_detected: device.userDetails.reduce(
-          (latest, user) => (user.last_used > latest ? user.last_used : latest),
-          device.userDetails[0].last_used,
+          (latest, u) => (u.last_used > latest ? u.last_used : latest),
+          device.userDetails[0].last_used
         ),
       }))
       .sort((a, b) => b.user_count - a.user_count)
 
     return NextResponse.json({ data: sharedDevices })
   } catch (error) {
-    console.error("Weekly device sharing error:", error)
+    console.error("[v0] Weekly device sharing error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
