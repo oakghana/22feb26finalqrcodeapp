@@ -1,7 +1,7 @@
 "use client"
 
 import React, { createContext, useContext, useEffect, useState } from "react"
-import { syncServerTime, needsResync, getGhanaTimeISO } from "@/lib/server-time"
+import { getServerTime } from "@/lib/server-time"
 
 interface TimeSyncContextType {
   isSynced: boolean
@@ -17,51 +17,43 @@ export function TimeSyncProvider({ children }: { children: React.ReactNode }) {
   const [ghanaTime, setGhanaTime] = useState(new Date())
 
   useEffect(() => {
-    let syncTimer: NodeJS.Timeout
     let updateTimer: NodeJS.Timeout
-    let resyncTimer: NodeJS.Timeout
+    let fetchTimer: NodeJS.Timeout
 
-    const performSync = async () => {
+    const fetchAndUpdate = async () => {
       try {
-        await syncServerTime()
+        const serverTime = await getServerTime()
+        setGhanaTime(serverTime)
         setIsSynced(true)
         setError(null)
-        console.log("[v0] Server time synced successfully")
+        console.log("[v0] Server time fetched successfully")
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : "Failed to sync server time"
+        const errorMsg = err instanceof Error ? err.message : "Failed to fetch server time"
         setError(errorMsg)
         setIsSynced(false)
-        console.error("[v0] Server time sync failed:", errorMsg)
+        console.error("[v0] Server time fetch failed:", errorMsg)
       }
     }
 
-    const updateTime = () => {
+    // Initial fetch on mount
+    fetchAndUpdate()
+
+    // Visual tick every second using cached server time
+    updateTimer = setInterval(async () => {
       try {
-        const isoString = getGhanaTimeISO()
-        setGhanaTime(new Date(isoString))
+        const serverTime = await getServerTime()
+        setGhanaTime(serverTime)
       } catch (err) {
-        console.error("[v0] Error updating Ghana time:", err)
+        // Silent fail on tick - fetchAndUpdate will show errors
       }
-    }
+    }, 1000)
 
-    // Initial sync on mount
-    performSync()
-
-    // Update display time every second
-    updateTimer = setInterval(updateTime, 1000)
-
-    // Resync every 5 minutes
-    resyncTimer = setInterval(() => {
-      if (needsResync()) {
-        console.log("[v0] Performing periodic time resync")
-        performSync()
-      }
-    }, 5 * 60 * 1000)
+    // Refetch from server every 30 seconds to stay in sync
+    fetchTimer = setInterval(fetchAndUpdate, 30 * 1000)
 
     return () => {
       clearInterval(updateTimer)
-      clearInterval(resyncTimer)
-      clearTimeout(syncTimer)
+      clearInterval(fetchTimer)
     }
   }, [])
 
