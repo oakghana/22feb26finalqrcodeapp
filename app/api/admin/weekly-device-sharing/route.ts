@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
 
     let userProfilesQuery = supabase
       .from("user_profiles")
-      .select("id, first_name, last_name, email, department_id, assigned_location_id, departments(name)")
+      .select("id, first_name, last_name, email, department_id, assigned_location_id")
       .in("id", userIds)
 
     if (departmentId) {
@@ -131,7 +131,7 @@ export async function GET(request: NextRequest) {
           first_name: userProfile.first_name,
           last_name: userProfile.last_name,
           email: userProfile.email,
-          department_name: (userProfile as any).departments?.name || "Unknown",
+          department_name: "Unknown",
           last_used: session.created_at,
         })
       }
