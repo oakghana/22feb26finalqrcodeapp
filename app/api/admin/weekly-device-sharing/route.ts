@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { type NextRequest, NextResponse } from "next/server"
+import { getGhanaServerTime, getGhanaServerTimeISO } from "@/lib/server-time"
 
 export async function GET(request: NextRequest) {
   try {
@@ -33,12 +34,12 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get("start_date")
     const endDate = searchParams.get("end_date")
 
-    // Set date range (default to last 7 days)
-    const defaultStartDate = new Date()
+    // Set date range (default to last 7 days) using Ghana server time
+    const defaultStartDate = getGhanaServerTime()
     defaultStartDate.setDate(defaultStartDate.getDate() - 7)
     
     const filterStartDate = startDate ? new Date(startDate) : defaultStartDate
-    const filterEndDate = endDate ? new Date(endDate) : new Date()
+    const filterEndDate = endDate ? new Date(endDate) : getGhanaServerTime()
 
     const sevenDaysAgo = defaultStartDate;
 

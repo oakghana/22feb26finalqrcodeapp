@@ -2,6 +2,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { type NextRequest, NextResponse } from "next/server"
 import { validateCheckoutLocation, type LocationData } from "@/lib/geolocation"
 import { requiresEarlyCheckoutReason, canCheckOutAtTime, getCheckOutDeadline, isSecurityDept, isOperationalDept, isTransportDept } from "@/lib/attendance-utils"
+import { getGhanaServerTime, getGhanaServerTimeISO } from "@/lib/server-time"
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,8 +25,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Location coordinates are required for GPS check-out" }, { status: 400 })
     }
 
-    const now = new Date()
-    const today = new Date().toISOString().split("T")[0]
+    const now = getGhanaServerTime()
+    const today = getGhanaServerTimeISO().split("T")[0]
 
     // OPTIMIZATION: Parallelize database queries
     const [
@@ -82,7 +83,7 @@ export async function POST(request: NextRequest) {
       if (override_request && override_reason && (isSec || isOp || isTrans)) {
         await supabase.from("emergency_check_in_overrides").insert({
           user_id: user.id,
-          check_out_time: new Date().toISOString(),
+          check_out_time: getGhanaServerTimeISO(),
           override_type: 'leave_override',
           reason: override_reason,
           is_security_staff: isSec,
@@ -141,7 +142,7 @@ export async function POST(request: NextRequest) {
           violation_type: "double_checkout_attempt",
           device_info: {
             userAgent: request.headers.get("user-agent"),
-            timestamp: new Date().toISOString(),
+            timestamp: getGhanaServerTimeISO(),
           },
         })
         .catch((err) => {
@@ -240,7 +241,7 @@ export async function POST(request: NextRequest) {
       }
 
       const ipAddress = getValidIpAddress()
-      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
+      const twoHoursAgo = new Date(getGhanaServerTime().getTime() - 2 * 60 * 60 * 1000).toISOString()
       
       console.log("[v0] Checkout - Enhanced device sharing check:", {
         deviceId: device_info.device_id,
@@ -287,7 +288,7 @@ export async function POST(request: NextRequest) {
 
         if (previousUserProfile) {
           const previousUserName = `${previousUserProfile.first_name} ${previousUserProfile.last_name}`
-          const timeSinceLastUse = Math.round((Date.now() - new Date(recentDeviceSession.last_activity).getTime()) / (1000 * 60))
+          const timeSinceLastUse = Math.round((getGhanaServerTime().getTime() - new Date(recentDeviceSession.last_activity).getTime()) / (1000 * 60))
           
           deviceSharingWarning = {
             type: "device_sharing",
@@ -332,7 +333,7 @@ export async function POST(request: NextRequest) {
 
         if (ipSharerProfile) {
           const sharerName = `${ipSharerProfile.first_name} ${ipSharerProfile.last_name}`
-          const timeSinceLastUse = Math.round((Date.now() - new Date(ipSharingSession.last_activity).getTime()) / (1000 * 60))
+          const timeSinceLastUse = Math.round((getGhanaServerTime().getTime() - new Date(ipSharingSession.last_activity).getTime()) / (1000 * 60))
           
           deviceSharingWarning = {
             type: "ip_sharing",
@@ -476,7 +477,7 @@ export async function POST(request: NextRequest) {
     }
 
     const checkInTime = new Date(attendanceRecord.check_in_time)
-    const checkOutTime = new Date()
+    const checkOutTime = getGhanaServerTime()
     const workHours = (checkOutTime.getTime() - checkInTime.getTime()) / (1000 * 60 * 60)
 
     // determine remote checkout status: anything outside a known location is treated
@@ -554,7 +555,7 @@ export async function POST(request: NextRequest) {
       check_out_time: checkOutTime.toISOString(),
       check_out_location_id: checkoutLocationData?.id || null,
       work_hours: Math.round(workHours * 100) / 100,
-      updated_at: new Date().toISOString(),
+      updated_at: getGhanaServerTimeISO(),
       check_out_method: willBeRemoteCheckout ? "remote_offpremises" : (qr_code_used ? "qr_code" : "gps"),
       check_out_location_name: checkoutLocationData?.name || (willBeRemoteCheckout ? "Off‑Premises (approved)" : "Unknown Location"),
       // mark remote checkout if user was approved off‑premises and not within a QCC location
