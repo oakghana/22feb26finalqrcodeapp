@@ -15,11 +15,11 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion"
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs"
 import { RefreshCw, ShieldAlert, Users, AlertTriangle, CheckCircle2, Smartphone } from "lucide-react"
 
 interface SharedDevice {
@@ -216,69 +216,80 @@ export function DeptDeviceSharingClient() {
               </p>
             </div>
           ) : (
-            <Accordion type="single" collapsible className="w-full">
+            <Tabs defaultValue={`device-0`} className="w-full">
+              <TabsList className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 mb-6 w-full">
+                {data.sharedDevices.map((device, index) => (
+                  <TabsTrigger key={device.device_id} value={`device-${index}`} className="text-xs">
+                    <Smartphone className="h-3 w-3 mr-1" />
+                    <span className="hidden sm:inline">Device {index + 1}</span>
+                    <span className="sm:hidden">D{index + 1}</span>
+                  </TabsTrigger>
+                ))}
+              </TabsList>
               {data.sharedDevices.map((device, index) => (
-                <AccordionItem key={device.device_id} value={`device-${index}`}>
-                  <AccordionTrigger className="hover:no-underline">
-                    <div className="flex items-center gap-4 w-full pr-4">
-                      <div className="flex items-center gap-2">
-                        <Smartphone className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-mono text-sm truncate max-w-[200px]">
-                          {device.device_id.substring(0, 20)}...
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 ml-auto">
-                        {getRiskBadge(device.risk_level)}
-                        <Badge variant="outline">{device.user_count} users</Badge>
+                <TabsContent key={device.device_id} value={`device-${index}`} className="space-y-4">
+                  <div className="flex items-center justify-between rounded-lg border p-4">
+                    <div className="flex items-center gap-4">
+                      <div className="flex flex-col">
+                        <span className="font-mono text-sm font-medium">{device.device_id}</span>
+                        <span className="text-xs text-muted-foreground">{device.user_count} users sharing this device</span>
                       </div>
                     </div>
-                  </AccordionTrigger>
-                  <AccordionContent>
-                    <div className="pt-4">
-                      <div className="mb-4 text-sm text-muted-foreground">
-                        <p>First detected: {formatDate(device.first_detected)}</p>
-                        <p>Last activity: {formatDate(device.last_activity)}</p>
-                        <p>Total sessions: {device.total_sessions}</p>
-                      </div>
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Staff Name</TableHead>
-                            <TableHead>Employee ID</TableHead>
-                            <TableHead>Email</TableHead>
-                            <TableHead className="text-right">Sessions</TableHead>
-                            <TableHead>Last Used</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {device.users.map((user) => (
-                            <TableRow key={user.id}>
-                              <TableCell className="font-medium">{user.name}</TableCell>
-                              <TableCell>{user.employee_id}</TableCell>
-                              <TableCell className="text-muted-foreground">{user.email}</TableCell>
-                              <TableCell className="text-right">{user.sessionCount}</TableCell>
-                              <TableCell>
-                                {user.lastUsed ? formatDate(user.lastUsed) : "N/A"}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                      <div className="mt-4 p-4 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-800">
-                        <h4 className="font-semibold text-amber-800 dark:text-amber-200 flex items-center gap-2">
-                          <AlertTriangle className="h-4 w-4" />
-                          Action Required
-                        </h4>
-                        <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
-                          Please investigate why these staff members are using the same device.
-                          If unauthorized device sharing is confirmed, take appropriate disciplinary action.
-                        </p>
-                      </div>
+                    <div className="flex items-center gap-2">
+                      {getRiskBadge(device.risk_level)}
+                      <Badge variant="outline">{device.total_sessions} sessions</Badge>
                     </div>
-                  </AccordionContent>
-                </AccordionItem>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="rounded-lg border p-3 space-y-1">
+                      <p className="text-xs text-muted-foreground">First Detected</p>
+                      <p className="text-sm font-medium">{formatDate(device.first_detected)}</p>
+                    </div>
+                    <div className="rounded-lg border p-3 space-y-1">
+                      <p className="text-xs text-muted-foreground">Last Activity</p>
+                      <p className="text-sm font-medium">{formatDate(device.last_activity)}</p>
+                    </div>
+                  </div>
+
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Staff Name</TableHead>
+                        <TableHead>Employee ID</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead className="text-right">Sessions</TableHead>
+                        <TableHead>Last Used</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {device.users.map((user) => (
+                        <TableRow key={user.id}>
+                          <TableCell className="font-medium">{user.name}</TableCell>
+                          <TableCell>{user.employee_id}</TableCell>
+                          <TableCell className="text-muted-foreground">{user.email}</TableCell>
+                          <TableCell className="text-right">{user.sessionCount}</TableCell>
+                          <TableCell>
+                            {user.lastUsed ? formatDate(user.lastUsed) : "N/A"}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+
+                  <div className="mt-4 p-4 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-800">
+                    <h4 className="font-semibold text-amber-800 dark:text-amber-200 flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4" />
+                      Action Required
+                    </h4>
+                    <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                      Please investigate why these staff members are using the same device.
+                      If unauthorized device sharing is confirmed, take appropriate disciplinary action.
+                    </p>
+                  </div>
+                </TabsContent>
               ))}
-            </Accordion>
+            </Tabs>
           )}
         </CardContent>
       </Card>
