@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { type NextRequest, NextResponse } from "next/server"
 import { requiresLatenessReason, canCheckInAtTime, getCheckInDeadline, isSecurityDept, isOperationalDept, isTransportDept } from "@/lib/attendance-utils"
+import { getGhanaServerTime, getGhanaServerTimeISO } from "@/lib/server-time"
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,7 +26,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
 
     // Check if user already checked in today IMMEDIATELY at the start
-    const today = new Date().toISOString().split("T")[0]
+    // Use Ghana server time to prevent device clock manipulation
+    const today = getGhanaServerTimeISO().split("T")[0]
     const { data: existingRecord, error: checkError } = await supabase
       .from("attendance_records")
       .select("id, check_in_time, check_out_time")
@@ -135,7 +137,7 @@ export async function POST(request: NextRequest) {
           // log override and continue with check-in
           await supabase.from("emergency_check_in_overrides").insert({
             user_id: user.id,
-            check_in_time: new Date().toISOString(),
+            check_in_time: getGhanaServerTimeISO(),
             override_type: 'leave_override',
             reason: override_reason,
             is_security_staff: isSec,
@@ -246,7 +248,8 @@ export async function POST(request: NextRequest) {
       // Check if this device was recently used by another staff member
       // Enhanced detection using both device fingerprint (MAC-like) and IP address
       if (device_info?.device_id) {
-        const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
+        // Use Ghana server time for date calculations
+        const twoHoursAgo = new Date(getGhanaServerTime().getTime() - 2 * 60 * 60 * 1000).toISOString()
         
         console.log("[v0] Checking device sharing with enhanced detection:", {
           deviceId: device_info.device_id,
@@ -412,7 +415,7 @@ export async function POST(request: NextRequest) {
 
       // Check for suspicious location changes (potential cached location spoofing)
       if (!qr_code_used && latitude && longitude) {
-        const sevenDaysAgo = new Date()
+        const sevenDaysAgo = getGhanaServerTime()
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
         
         const { data: recentCheckIns } = await supabase
@@ -473,7 +476,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const yesterday = new Date()
+    const yesterday = getGhanaServerTime()
     yesterday.setDate(yesterday.getDate() - 1)
     const yesterdayDate = yesterday.toISOString().split("T")[0]
 
@@ -499,7 +502,7 @@ export async function POST(request: NextRequest) {
           work_hours: Math.round(workHours * 100) / 100,
           check_out_method: "auto_system",
           check_out_location_name: "Auto Check-out (Missed)",
-          updated_at: new Date().toISOString(),
+          updated_at: getGhanaServerTimeISO(),
         })
         .eq("id", yesterdayRecord.id)
 
@@ -565,7 +568,7 @@ export async function POST(request: NextRequest) {
             browser_info: device_info.browser_info || null,
             ip_address: request.ip || null,
             is_active: true,
-            last_activity: new Date().toISOString(),
+            last_activity: getGhanaServerTimeISO(),
           })
           .eq("id", existingSession.id)
           .select("id")
@@ -586,7 +589,7 @@ export async function POST(request: NextRequest) {
             browser_info: device_info.browser_info || null,
             ip_address: request.ip || null,
             is_active: true,
-            last_activity: new Date().toISOString(),
+            last_activity: getGhanaServerTimeISO(),
           })
           .select("id")
           .maybeSingle()
@@ -601,7 +604,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if check-in is after 9:00 AM (late arrival)
-    const checkInTime = new Date()
+    const checkInTime = getGhanaServerTime()
     const checkInHour = checkInTime.getHours()
     const checkInMinutes = checkInTime.getMinutes()
     const isWeekend = checkInTime.getDay() === 0 || checkInTime.getDay() === 6
