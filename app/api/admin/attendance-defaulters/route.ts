@@ -28,6 +28,8 @@ export async function GET(request: Request) {
     const timeframe = searchParams.get("timeframe") || "daily"
     const departmentId = searchParams.get("department_id")
     const locationId = searchParams.get("location_id")
+    const offset = parseInt(searchParams.get("offset") || "0", 10)
+    const limit = parseInt(searchParams.get("limit") || "10", 10)
 
     const now = getGhanaServerTime()
     const startDate = getGhanaServerTime()
@@ -123,8 +125,15 @@ export async function GET(request: Request) {
     )
 
     const filtered = defaulters.filter(Boolean)
+    const total = filtered.length
+    const paginated = filtered.slice(offset, offset + limit)
 
-    return NextResponse.json({ defaulters: filtered })
+    return NextResponse.json({ 
+      defaulters: paginated,
+      total: total,
+      offset: offset,
+      limit: limit
+    })
   } catch (error) {
     console.error("Error fetching attendance defaulters:", error)
     return NextResponse.json({ error: error instanceof Error ? error.message : "Internal server error" }, { status: 500 })
