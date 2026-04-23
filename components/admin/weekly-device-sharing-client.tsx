@@ -225,8 +225,8 @@ export default function WeeklyDeviceSharingClient({ userRole, departmentId }: We
           {userRole === "admin" && (
             <Dialog open={showClearDialog} onOpenChange={setShowClearDialog}>
               <DialogTrigger asChild>
-                <Button variant="destructive">
-                  <Trash2 className="h-4 w-4 mr-2" />
+                <Button variant="destructive" className="gap-2">
+                  <Trash2 className="h-4 w-4" />
                   Clear Violation Data
                 </Button>
               </DialogTrigger>
