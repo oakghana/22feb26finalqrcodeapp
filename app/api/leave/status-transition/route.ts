@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
           leave_status: "at_post",
           leave_start_date: null,
           leave_end_date: null,
-          updated_at: new Date().toISOString(),
+          updated_at: getGhanaServerTimeISO(),
         })
         .eq("id", leaveNotif.user_id)
 
@@ -155,7 +155,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const supabase = await createClient()
-    const today = new Date().toISOString().split("T")[0]
+    const today = getGhanaServerTimeISO().split("T")[0]
 
     // Find approved leave notifications that should be activated (start date today)
     const { data: toActivate } = await supabase
@@ -166,7 +166,7 @@ export async function GET(request: NextRequest) {
       .eq("is_auto_transitioned", false)
 
     // Find leave notifications that should be restored (end date was yesterday)
-    const yesterday = new Date()
+    const yesterday = getGhanaServerTime()
     yesterday.setDate(yesterday.getDate() - 1)
     const yesterdayDate = yesterday.toISOString().split("T")[0]
 
@@ -189,7 +189,7 @@ export async function GET(request: NextRequest) {
             leave_status: "on_leave",
             leave_start_date: notif.start_date,
             leave_end_date: notif.end_date,
-            updated_at: new Date().toISOString(),
+            updated_at: getGhanaServerTimeISO(),
           })
           .eq("id", notif.user_id)
 
@@ -211,7 +211,7 @@ export async function GET(request: NextRequest) {
             leave_status: "at_post",
             leave_start_date: null,
             leave_end_date: null,
-            updated_at: new Date().toISOString(),
+            updated_at: getGhanaServerTimeISO(),
           })
           .eq("id", notif.user_id)
 

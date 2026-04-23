@@ -62,10 +62,10 @@ export async function GET(request: Request) {
     }
 
     // Compute stats per location: today's check-ins/check-outs and currently checked-in count
-    const startOfDay = new Date()
+    const startOfDay = getGhanaServerTime()
     startOfDay.setHours(0, 0, 0, 0)
     const startIso = startOfDay.toISOString()
-    const nowIso = new Date().toISOString()
+    const nowIso = getGhanaServerTimeISO()
 
     // Haversine distance helper
     const toRad = (deg: number) => (deg * Math.PI) / 180

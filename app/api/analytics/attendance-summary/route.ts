@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     const monthParam = searchParams.get("month")
     const yearParam = searchParams.get("year")
 
-    const now = new Date()
+    const now = getGhanaServerTime()
     const month = monthParam ? parseInt(monthParam) : now.getMonth()
     const year = yearParam ? parseInt(yearParam) : now.getFullYear()
 
