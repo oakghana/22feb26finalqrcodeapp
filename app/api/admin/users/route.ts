@@ -46,41 +46,57 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const { data: users, error } = await supabase
-      .from("user_profiles")
-      .select(`
-        id,
-        first_name,
-        last_name,
-        email,
-        employee_id,
-        role,
-        is_active
-      `)
-      .eq("is_active", true)
-      .order("first_name")
-      .range(0, 2999) // Fetch up to 3000 records to support larger organizations
-
-    if (error) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Failed to fetch users",
-          details: error.message,
-        },
-        {
-          status: 500,
-          headers: {
-            "Content-Type": "application/json",
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            Pragma: "no-cache",
-            Expires: "0",
+    // Fetch ALL users by paginating in batches of 1000 (Supabase default limit)
+    const BATCH_SIZE = 1000
+    let allUsers: any[] = []
+    let offset = 0
+    let hasMore = true
+    
+    while (hasMore) {
+      const { data: batch, error: batchError } = await supabase
+        .from("user_profiles")
+        .select(`
+          id,
+          first_name,
+          last_name,
+          email,
+          employee_id,
+          role,
+          is_active
+        `)
+        .eq("is_active", true)
+        .order("first_name")
+        .range(offset, offset + BATCH_SIZE - 1)
+      
+      if (batchError) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Failed to fetch users",
+            details: batchError.message,
           },
-        },
-      )
+          {
+            status: 500,
+            headers: {
+              "Content-Type": "application/json",
+              "Cache-Control": "no-cache, no-store, must-revalidate",
+              Pragma: "no-cache",
+              Expires: "0",
+            },
+          },
+        )
+      }
+      
+      if (batch && batch.length > 0) {
+        allUsers = allUsers.concat(batch)
+        offset += BATCH_SIZE
+        hasMore = batch.length === BATCH_SIZE
+      } else {
+        hasMore = false
+      }
     }
 
-    let filteredUsers = users || []
+    let filteredUsers = allUsers
     if (profile.role === "it-admin") {
       filteredUsers = users?.filter((u) => u.role !== "admin" && u.role !== "it-admin") || []
     }
