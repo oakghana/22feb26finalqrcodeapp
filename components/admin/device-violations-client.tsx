@@ -8,16 +8,14 @@ import { AlertTriangle, Shield, Clock, ArrowLeft, Trash2, RefreshCw } from "luci
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 
 interface Violation {
   id: string
@@ -52,6 +50,7 @@ export default function DeviceViolationsClient({
   const [loading, setLoading] = useState(true)
   const [clearing, setClearing] = useState(false)
   const [clearResult, setClearResult] = useState<{ success: boolean; message: string; cleared?: any } | null>(null)
+  const [showClearDialog, setShowClearDialog] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
@@ -138,6 +137,7 @@ export default function DeviceViolationsClient({
           cleared: result.cleared,
         })
         setViolations([])
+        setShowClearDialog(false)
       } else {
         setClearResult({
           success: false,
@@ -183,17 +183,17 @@ export default function DeviceViolationsClient({
           </Button>
 
           {isAdmin && (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
+            <Dialog open={showClearDialog} onOpenChange={setShowClearDialog}>
+              <DialogTrigger asChild>
                 <Button variant="destructive" size="sm" disabled={clearing}>
                   <Trash2 className="mr-2 h-4 w-4" />
                   Clear All Device Data
                 </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Clear All Device Monitoring Data?</AlertDialogTitle>
-                  <AlertDialogDescription className="space-y-2">
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Clear All Device Monitoring Data?</DialogTitle>
+                  <DialogDescription className="space-y-2">
                     <span className="block">
                       This will permanently delete all device sessions, security violations, and device bindings from the database.
                     </span>
@@ -203,19 +203,22 @@ export default function DeviceViolationsClient({
                     <span className="block text-sm">
                       Attendance records, staff profiles, and audit logs are NOT affected.
                     </span>
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setShowClearDialog(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
                     onClick={handleClearDeviceData}
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    disabled={clearing}
                   >
-                    Yes, Clear All Device Data
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+                    {clearing ? "Clearing..." : "Yes, Clear All Device Data"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           )}
         </div>
       </div>
