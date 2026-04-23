@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { type NextRequest, NextResponse } from "next/server"
 import { getDeviceInfo } from "@/lib/device-info"
+import { getGhanaServerTime, getGhanaServerTimeISO } from "@/lib/server-time"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 30
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
     const { location_id, latitude, longitude, accuracy, device_info, location_name, is_remote_location } = body
 
     // Check today's attendance in parallel
-    const today = new Date().toISOString().split("T")[0]
+    const today = getGhanaServerTimeISO().split("T")[0]
     const { data: existingRecord } = await supabase
       .from("attendance_records")
       .select("id, check_in_time")
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
       .from("attendance_records")
       .insert({
         user_id: user.id,
-        check_in_time: new Date().toISOString(),
+        check_in_time: getGhanaServerTimeISO(),
         check_in_location_id: location_id,
         check_in_location_name: location_name,
         latitude,

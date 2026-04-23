@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 import { type NextRequest, NextResponse } from "next/server"
 import { validateCheckoutLocation, type LocationData } from "@/lib/geolocation"
 import { sendEmergencyCheckoutNotification } from "@/lib/email-service"
+import { getGhanaServerTime, getGhanaServerTimeISO } from "@/lib/server-time"
 
 export async function POST(request: NextRequest) {
   try {
@@ -30,8 +31,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Location coordinates are required for emergency check-out" }, { status: 400 })
     }
 
-    const now = new Date()
-    const today = new Date().toISOString().split("T")[0]
+    const now = getGhanaServerTime()
+    const today = getGhanaServerTimeISO().split("T")[0]
 
     // Get today's attendance record
     const { data: attendanceRecord, error: findError } = await supabase

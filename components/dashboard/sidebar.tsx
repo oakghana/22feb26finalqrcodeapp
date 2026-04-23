@@ -17,6 +17,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { createClient } from "@/lib/supabase/client"
 import { clearAppCache } from "@/lib/cache-manager"
+import { GhanaTimeDisplay } from "./ghana-time-display"
 import {
   Home,
   Clock,
@@ -588,6 +589,8 @@ export function Sidebar({ user, profile, isCollapsed, setIsCollapsed }: SidebarP
               </button>
             </div>
           </nav>
+
+          {!isCollapsed && <GhanaTimeDisplay />}
 
           <div className="p-4 border-t border-sidebar-border/50 bg-gradient-to-r from-muted/20 to-transparent">
             {isCollapsed ? (

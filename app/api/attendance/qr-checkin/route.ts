@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 import { calculateDistance, getBrowserTolerance } from "@/lib/geolocation"
+import { getGhanaServerTime, getGhanaServerTimeISO } from "@/lib/server-time"
 
 export async function POST(request: Request) {
   try {
@@ -74,7 +75,7 @@ export async function POST(request: Request) {
       gpsAvailable = false
     }
 
-    const now = new Date()
+    const now = getGhanaServerTime()
     const today = now.toISOString().split("T")[0]
 
     const { data: existingAttendance, error: attendanceError } = await supabase

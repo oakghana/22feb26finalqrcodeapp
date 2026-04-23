@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { getGhanaServerTime, getGhanaServerTimeISO } from "@/lib/server-time"
 
 export async function POST(request: Request) {
   try {
@@ -22,7 +23,7 @@ export async function POST(request: Request) {
     }
 
     // Check if user is on leave
-    const today = new Date().toISOString().split("T")[0]
+    const today = getGhanaServerTimeISO().split("T")[0]
     const { data: leaveStatus } = await supabase
       .from("leave_status")
       .select("*")
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid location" }, { status: 400 })
     }
 
-    const now = new Date()
+    const now = getGhanaServerTime()
     const todayDate = now.toISOString().split("T")[0]
 
     // Find today's attendance record without check-out
