@@ -4,6 +4,8 @@
  * Zero reliance on device clock - even if device time is wrong, app time stays correct
  */
 
+"use client"
+
 import * as React from "react"
 
 export interface ServerTimeData {
